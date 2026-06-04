@@ -1,0 +1,78 @@
+{
+  "manifest_version": 3,
+  "name": "フリマ管理アシスト｜メルカリ→ラクマ・Yahooフリマ自動出品",
+  "version": "1.3.1",
+  "description": "メルカリの商品情報をラクマ・ヤフオクに自動コピー。マルチフリマ出品を効率化。",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "tabs",
+    "clipboardWrite",
+    "clipboardRead",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://furima-license-server-1.onrender.com/*",
+    "https://jp.mercari.com/*",
+    "https://www.mercari.com/*",
+    "https://static.mercdn.net/*",
+    "https://*.mercdn.net/*",
+    "https://fril.jp/*",
+    "https://*.fril.jp/*",
+    "https://rakuma.rakuten.co.jp/*",
+    "https://*.rakuma.rakuten.co.jp/*",
+    "https://paypayfleamarket.yahoo.co.jp/*",
+    "https://auctions.yahoo.co.jp/*",
+    "https://*.auctions.yahoo.co.jp/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "フリマ管理アシスト",
+    "default_icon": {
+      "16":  "icons/icon16.png",
+      "48":  "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16":  "icons/icon16.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "mercari_scrape.js",
+        "rakuma_fill.js",
+        "yahoo_desc_fill.js",
+        "yahoo_price_fill.js",
+        "yahoo_title_fill.js"
+      ],
+      "matches": [
+        "https://jp.mercari.com/*",
+        "https://www.mercari.com/*",
+        "https://fril.jp/*",
+        "https://*.fril.jp/*",
+        "https://rakuma.rakuten.co.jp/*",
+        "https://*.rakuma.rakuten.co.jp/*",
+        "https://auctions.yahoo.co.jp/*",
+        "https://*.auctions.yahoo.co.jp/*",
+        "https://paypayfleamarket.yahoo.co.jp/*"
+      ]
+    }
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://auctions.yahoo.co.jp/sell/*",
+        "https://auctions.yahoo.co.jp/*/submit*"
+      ],
+      "js": ["yahoo_title_fill.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

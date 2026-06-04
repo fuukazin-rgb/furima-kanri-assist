@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<!-- フリマ管理アシスト v2.0.0 -->
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>フリマ管理アシスト</title>
+  <style>
+    :root {
+      --bg:            #f0f4fa;
+      --card:          #ffffff;
+      --card-border:   #dce6f0;
+      --text:          #1a2332;
+      --subtext:       #5b6e85;
+      --input-bg:      #ffffff;
+      --input-border:  #c8d5e3;
+      --result-bg:     #f0f7ff;
+      --result-border: #b8d4f5;
+
+      /* ボタンカラー（役割別） */
+      --blue:          #2563eb;
+      --blue-h:        #1d4ed8;
+      --gray:          #475569;
+      --gray-h:        #334155;
+      --green:         #0f766e;
+      --green-h:       #0d6660;
+      --orange:        #b45309;
+      --orange-h:      #92400e;
+      --red:           #dc2626;
+      --red-h:         #b91c1c;
+      --purple:        #7c3aed;
+      --purple-h:      #6d28d9;
+
+      --success:       #0f766e;
+      --accent-soft:   #e0ecff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      width: 460px;
+      margin: 0;
+      padding: 10px;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    h1 {
+      font-size: 18px;
+      margin: 0 0 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    h2 { font-size: 14px; margin: 0 0 8px; color: var(--text); font-weight: 700; }
+    h3 { font-size: 12px; margin: 0 0 6px; color: var(--text); font-weight: 700; }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+
+    /* カード左ボーダー色 */
+    .card-blue   { border-left: 4px solid var(--blue); }
+    .card-green  { border-left: 4px solid var(--green); }
+    .card-orange { border-left: 4px solid var(--orange); }
+    .card-red    { border-left: 4px solid var(--red); }
+    .card-purple { border-left: 4px solid var(--purple); }
+    .card-gray   { border-left: 4px solid var(--gray); }
+
+    .grid   { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: end; }
+    .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px; }
+
+    .site-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
+    .site-box  {
+      border: 1px solid var(--card-border);
+      background: #f8fbff;
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+
+    /* ─── ボタン共通 ─── */
+    button {
+      width: 100%;
+      padding: 10px 8px;
+      border: none;
+      border-radius: 8px;
+      background: var(--blue);
+      color: #fff;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+      transition: background 0.12s, transform 0.08s;
+      line-height: 1.3;
+    }
+    button:hover   { background: var(--blue-h); transform: translateY(-1px); }
+    button:active  { transform: translateY(0); }
+
+    button.btn-gray   { background: var(--gray); }
+    button.btn-gray:hover { background: var(--gray-h); }
+
+    button.btn-green  { background: var(--green); }
+    button.btn-green:hover { background: var(--green-h); }
+
+    button.btn-orange { background: var(--orange); }
+    button.btn-orange:hover { background: var(--orange-h); }
+
+    button.btn-red    { background: var(--red); }
+    button.btn-red:hover { background: var(--red-h); }
+
+    button.btn-purple { background: var(--purple); }
+    button.btn-purple:hover { background: var(--purple-h); }
+
+    button.btn-sm {
+      width: auto;
+      min-width: 72px;
+      padding: 8px 10px;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    label {
+      font-size: 11px;
+      display: block;
+      margin: 0 0 4px;
+      color: var(--subtext);
+      font-weight: 600;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--input-border);
+      border-radius: 8px;
+      font-size: 13px;
+      background: var(--input-bg);
+      color: var(--text);
+      outline: none;
+    }
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
+    }
+    textarea { resize: vertical; min-height: 72px; }
+
+    .mt6  { margin-top: 6px; }
+    .mt8  { margin-top: 8px; }
+    .mt10 { margin-top: 10px; }
+
+    /* ─── 利益ボックス ─── */
+    .profit-box {
+      margin-top: 8px;
+      padding: 8px 10px;
+      border: 1px solid var(--result-border);
+      border-radius: 8px;
+      background: var(--result-bg);
+    }
+    .profit-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      font-size: 12px;
+      border-bottom: 1px solid #e8f0fa;
+    }
+    .profit-row:last-child { border-bottom: none; }
+    .profit-row.total { font-weight: 700; font-size: 14px; color: var(--success); padding-top: 6px; }
+
+    /* ─── ステータス ─── */
+    .status {
+      font-size: 12px;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      background: var(--result-bg);
+      border: 1px solid var(--result-border);
+      border-radius: 8px;
+      padding: 10px;
+      color: var(--text);
+      min-height: 48px;
+    }
+
+    .small { font-size: 11px; color: var(--subtext); }
+
+    /* ─── バッジ ─── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .badge-blue   { background: #dbeafe; color: #1d4ed8; }
+    .badge-green  { background: #d1fae5; color: #065f46; }
+    .badge-orange { background: #fef3c7; color: #92400e; }
+    .badge-red    { background: #fee2e2; color: #991b1b; }
+    .badge-purple { background: #ede9fe; color: #5b21b6; }
+    .badge-gray   { background: #f1f5f9; color: #334155; }
+
+    /* ─── チェックリスト ─── */
+    .checklist-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 6px 0;
+      font-size: 12px;
+      border-bottom: 1px solid #f0f4f8;
+      cursor: pointer;
+    }
+    .checklist-item:last-child { border-bottom: none; }
+    .checklist-item input[type=checkbox] {
+      width: 15px; height: 15px;
+      accent-color: var(--green);
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    /* ─── 送料テーブル ─── */
+    .shipping-result {
+      margin-top: 8px;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--card-border);
+      font-size: 12px;
+    }
+    .shipping-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      padding: 7px 10px;
+      border-bottom: 1px solid #eef2f8;
+      align-items: center;
+    }
+    .shipping-row:last-child { border-bottom: none; }
+    .shipping-row:nth-child(odd) { background: #f8fbff; }
+    .shipping-name { font-weight: 600; }
+    .shipping-size { font-size: 11px; color: var(--subtext); }
+    .shipping-price {
+      font-weight: 700;
+      color: var(--green);
+      white-space: nowrap;
+      font-size: 13px;
+    }
+
+    /* 進捗バー */
+    .progress-bar {
+      height: 6px;
+      background: #e2e8f0;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--green);
+      border-radius: 999px;
+      transition: width 0.3s;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ライセンス認証オーバーレイ -->
+  <div id="licenseOverlay" style="
+    display:none; position:fixed; inset:0; z-index:999999;
+    background:rgba(15,23,42,0.97);
+    align-items:center; justify-content:center; padding:20px;
+  ">
+    <div style="background:#fff; border-radius:20px; width:100%; max-width:460px; padding:36px 32px; text-align:center; box-shadow:0 24px 60px rgba(0,0,0,0.4);">
+      <div style="font-size:48px; margin-bottom:10px;">🛍</div>
+      <div style="font-size:22px; font-weight:800; color:#1a2332; margin-bottom:6px;">フリマ管理アシスト</div>
+      <div style="font-size:14px; color:#5b6e85; margin-bottom:28px;">ご利用にはライセンス認証が必要です</div>
+
+      <!-- トライアルボタン -->
+      <button id="btnTrialStart" style="
+        width:100%; padding:16px; margin-bottom:14px;
+        background:#0f766e; color:#fff; border:none; border-radius:12px;
+        font-size:16px; font-weight:700; cursor:pointer;
+        box-shadow:0 4px 12px rgba(15,118,110,0.3);
+      ">🎁 7日間無料トライアルを開始</button>
+
+      <div style="font-size:13px; color:#94a3b8; margin-bottom:20px;">— または —</div>
+
+      <!-- ライセンスキー入力 -->
+      <div style="text-align:left; margin-bottom:10px;">
+        <label style="font-size:13px; color:#5b6e85; font-weight:600;">ライセンスキー</label>
+      </div>
+      <input id="licenseKeyInput" placeholder="FKA-XXXX-XXXX-XXXX"
+        style="width:100%; padding:14px; border:2px solid #c8d5e3; border-radius:10px;
+        font-size:15px; margin-bottom:12px; box-sizing:border-box; text-align:center;
+        letter-spacing:2px;"
+      />
+      <button id="btnLicenseVerify" style="
+        width:100%; padding:16px; margin-bottom:20px;
+        background:#2563eb; color:#fff; border:none; border-radius:12px;
+        font-size:16px; font-weight:700; cursor:pointer;
+        box-shadow:0 4px 12px rgba(37,99,235,0.3);
+      ">🔑 ライセンス認証</button>
+
+      <!-- ステータスメッセージ -->
+      <div id="licenseMsg" style="
+        font-size:14px; min-height:22px; color:#dc2626; margin-bottom:14px; font-weight:600;
+        white-space:pre-line;
+      "></div>
+
+      <!-- 注意書き -->
+      <div style="font-size:12px; color:#94a3b8; line-height:1.8;">
+        ※ 初回認証時は最大50秒かかる場合があります<br>
+        月額690円 / 年額5,900円（7日間無料）<br>
+        <a href="https://fuukazin.gumroad.com/l/hnpwm" target="_blank"
+          style="color:#2563eb; font-size:14px; font-weight:700;">🛒 購入はこちら</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- トライアル残日数バナー -->
+  <div id="trialBanner" style="
+    display:none; background:#fef3c7; border:1px solid #f59e0b;
+    border-radius:8px; padding:8px 12px; margin-bottom:8px;
+    font-size:11px; color:#92400e; font-weight:600; text-align:center;
+  "></div>
+  <!-- 購入ボタン（トライアル中に表示） -->
+  <div id="buyBanner" style="
+    display:none; background:#eff6ff; border:1px solid #93c5fd;
+    border-radius:8px; padding:10px 14px; margin-bottom:8px;
+    text-align:center;
+  ">
+    <div style="font-size:12px; color:#1d4ed8; font-weight:600; margin-bottom:6px;">
+      🛒 トライアル期間中でも購入できます
+    </div>
+    <a href="https://fuukazin.gumroad.com/l/hnpwm" target="_blank" style="
+      display:inline-block; padding:8px 20px;
+      background:#2563eb; color:#fff; border-radius:8px;
+      font-size:13px; font-weight:700; text-decoration:none;
+    ">今すぐ購入する（月額690円）</a>
+  </div>
+  <h1>🛍 フリマ管理アシスト</h1>
+
+  <!-- 購入・ライセンス認証カード（常時表示） -->
+  <div id="purchaseCard" style="
+    background:linear-gradient(135deg,#eff6ff,#f0fdf4);
+    border:1.5px solid #93c5fd; border-radius:14px;
+    padding:12px 14px; margin-bottom:10px;
+    box-shadow:0 2px 8px rgba(37,99,235,0.08);
+  ">
+    <!-- キー入力 -->
+    <input id="mainLicenseKeyInput" placeholder="FKA-XXXX-XXXX-XXXX"
+      style="width:100%; padding:10px 12px; border:1.5px solid #bfdbfe; border-radius:8px;
+      font-size:13px; box-sizing:border-box; letter-spacing:1px; background:#fff;
+      color:#1e3a5f; outline:none; margin-bottom:8px;"
+    />
+    <!-- 認証ボタン -->
+    <button id="btnMainLicenseVerify" style="
+      width:100%; padding:10px; background:#2563eb; color:#fff;
+      border:none; border-radius:8px; font-size:13px; font-weight:700;
+      cursor:pointer; margin-bottom:6px;
+    ">🔑 ライセンス認証</button>
+    <!-- メッセージ -->
+    <div id="mainLicenseMsg" style="font-size:11px; color:#dc2626; min-height:14px; margin-bottom:6px; padding-left:22px;"></div>
+    <!-- 購入ボタン -->
+    <a href="https://fuukazin.gumroad.com/l/hnpwm" target="_blank" style="
+      display:flex; align-items:center; justify-content:center; gap:6px;
+      padding:9px 12px; text-align:center;
+      background:linear-gradient(135deg,#0f766e,#059669);
+      color:#fff; border-radius:9px;
+      font-size:13px; font-weight:700; text-decoration:none;
+      box-shadow:0 2px 6px rgba(15,118,110,0.25);
+    ">🛒 今すぐ購入（月額690円 / 年額5,900円）</a>
+  </div>
+
+  <!-- ① 基本操作 -->
+  <div class="card card-blue">
+    <div class="badge badge-blue">🔵 基本操作</div>
+    <div class="grid">
+      <button id="btnGetMercari">📥 メルカリで取得</button>
+      <button id="btnReload" class="btn-gray">🔄 データ再読込</button>
+      <button id="btnRakuma" class="btn-red">📋 ラクマに貼り付け</button>
+      <button id="btnYahoo"  class="btn-red">📋 Yahooに貼り付け</button>
+    </div>
+  </div>
+
+  <!-- ② 実行結果 -->
+  <div class="card card-gray">
+    <div class="badge badge-gray">📊 実行結果</div>
+    <div id="status" class="status">準備完了 — 上のボタンで操作してください</div>
+  </div>
+
+  <!-- ③ 商品データ -->
+  <div class="card card-blue">
+    <div class="badge badge-blue">📦 商品データ</div>
+
+    <label>管理番号</label>
+    <div class="grid-3">
+      <input id="manageId" placeholder="FM-20260403-001" />
+      <button id="btnGenerateId" class="btn-gray btn-sm">自動発番</button>
+      <button id="btnCopyId"     class="btn-gray btn-sm">コピー</button>
+    </div>
+
+    <label class="mt6">商品名</label>
+    <input id="title" />
+
+    <label class="mt6">価格（円）</label>
+    <input id="price" type="number" />
+
+    <label class="mt6">説明文</label>
+    <textarea id="description"></textarea>
+
+    <label class="mt6">商品状態</label>
+    <select id="condition">
+      <option value="">未設定</option>
+      <option value="新品、未使用">新品、未使用</option>
+      <option value="未使用に近い">未使用に近い</option>
+      <option value="目立った傷や汚れなし">目立った傷や汚れなし</option>
+      <option value="やや傷や汚れあり">やや傷や汚れあり</option>
+      <option value="傷や汚れあり">傷や汚れあり</option>
+      <option value="全体的に状態が悪い">全体的に状態が悪い</option>
+    </select>
+
+    <label class="mt6">カテゴリ（メルカリから自動取得）</label>
+    <input id="category" placeholder="例: スニーカー" />
+
+    <label class="mt6">ブランド（メルカリから自動取得）</label>
+    <input id="brand" placeholder="例: Nike / DJI" />
+
+    <label class="mt6">在庫メモ</label>
+    <textarea id="inventoryMemo" placeholder="保管場所、仕入れ日、付属品など"></textarea>
+  </div>
+
+  <!-- ④ 出品サポート（緑） -->
+  <div class="card card-green">
+    <div class="badge badge-green">✅ 出品サポート</div>
+    <div class="grid">
+      <button id="btnFormatTitle" class="btn-green">✏️ タイトル整形</button>
+      <button id="btnFormatDesc"  class="btn-green">📝 説明文整形</button>
+      <button id="btnCheck"       class="btn-green">🔍 出品チェック</button>
+      <button id="btnStale"       class="btn-orange">📅 売れ残りチェック</button>
+    </div>
+  </div>
+
+  <!-- ⑤ 利益管理（オレンジ） -->
+  <div class="card card-orange">
+    <div class="badge badge-orange">💰 価格・利益管理</div>
+
+    <div class="grid">
+      <div>
+        <label>仕入れ値（円）</label>
+        <input id="cost" type="number" placeholder="0" />
+      </div>
+      <div>
+        <label>送料（円）</label>
+        <input id="shipping" type="number" placeholder="0" />
+      </div>
+    </div>
+
+    <label class="mt6">手数料率（%）</label>
+    <input id="feeRate" type="number" value="10" />
+
+    <div class="profit-box">
+      <div class="profit-row"><span>販売価格</span><span id="viewPrice">0円</span></div>
+      <div class="profit-row"><span>手数料</span><span id="viewFee">0円</span></div>
+      <div class="profit-row"><span>送料</span><span id="viewShipping">0円</span></div>
+      <div class="profit-row"><span>仕入れ値</span><span id="viewCost">0円</span></div>
+      <div class="profit-row"><span>利益率</span><span id="viewMargin">0%</span></div>
+      <div class="profit-row total"><span>予想利益</span><span id="viewProfit">0円</span></div>
+    </div>
+
+    <div class="mt8">
+      <button id="btnProfit" class="btn-orange">💰 利益計算</button>
+    </div>
+  </div>
+
+  <!-- ⑥ 送料計算（紫） -->
+  <div class="card card-purple">
+    <div class="badge badge-purple">📮 送料計算</div>
+    <div class="grid">
+      <div>
+        <label>3辺合計（cm）</label>
+        <input id="shippingSize" type="number" placeholder="例: 80" />
+      </div>
+      <div>
+        <label>重さ（kg）省略可</label>
+        <input id="shippingWeight" type="number" placeholder="例: 1.5" step="0.1" />
+      </div>
+    </div>
+    <button id="btnCalcShipping" class="btn-purple mt8">📮 送料を調べる</button>
+    <div id="shippingResultArea"></div>
+  </div>
+
+  <!-- ⑦ 出品管理 -->
+  <div class="card card-gray">
+    <div class="badge badge-gray">📋 出品管理</div>
+
+    <div class="grid">
+      <div>
+        <label>出品日</label>
+        <input id="listedDate" type="date" />
+      </div>
+      <div>
+        <label>出品先</label>
+        <select id="marketplace">
+          <option value="mercari">メルカリ</option>
+          <option value="rakuma">ラクマ</option>
+          <option value="yahoo">Yahooフリマ</option>
+          <option value="multi">複数フリマ</option>
+        </select>
+      </div>
+    </div>
+
+    <label class="mt6">管理メモ</label>
+    <textarea id="managementMemo" placeholder="再出品予定、反応状況など"></textarea>
+  </div>
+
+  <!-- ⑧ サイト別管理 + 売れた！ボタン（赤） -->
+  <div class="card card-red">
+    <div class="badge badge-red">🏪 サイト別管理</div>
+
+    <div class="site-grid">
+      <div class="site-box">
+        <h3>🛍 メルカリ</h3>
+        <div class="grid-3">
+          <input id="mercariUrl" placeholder="メルカリ商品URL" />
+          <button id="btnGetMercariUrl" class="btn-gray btn-sm">現在のURL</button>
+        </div>
+        <textarea id="mercariMemo" class="mt6" placeholder="反応・値下げ履歴など" style="min-height:48px;"></textarea>
+        <button id="btnSoldMercari" class="btn-red mt6">🎉 メルカリで売れた！</button>
+      </div>
+
+      <div class="site-box">
+        <h3>🏪 ラクマ</h3>
+        <div class="grid-3">
+          <input id="rakumaUrl" placeholder="ラクマ商品URL" />
+          <button id="btnGetRakumaUrl" class="btn-gray btn-sm">現在のURL</button>
+        </div>
+        <textarea id="rakumaMemo" class="mt6" placeholder="反応・出品状況など" style="min-height:48px;"></textarea>
+        <button id="btnSoldRakuma" class="btn-red mt6">🎉 ラクマで売れた！</button>
+      </div>
+
+      <div class="site-box">
+        <h3>🔨 Yahoo / ヤフオク</h3>
+        <div class="grid-3">
+          <input id="yahooUrl" placeholder="Yahoo/ヤフオク URL" />
+          <button id="btnGetYahooUrl" class="btn-gray btn-sm">現在のURL</button>
+        </div>
+        <textarea id="yahooMemo" class="mt6" placeholder="反応・出品状況など" style="min-height:48px;"></textarea>
+        <button id="btnSoldYahoo" class="btn-red mt6">🎉 Yahooで売れた！</button>
+      </div>
+    </div>
+
+    <button id="btnSaveSiteMeta" class="btn-gray mt8">💾 サイト別管理を保存</button>
+  </div>
+
+  <!-- ⑨ 出品リンク -->
+  <div class="card card-blue">
+    <div class="badge badge-blue">🔗 出品リンク</div>
+    <div class="grid">
+      <button id="btnOpenMercariListing">📱 メルカリ出品</button>
+      <button id="btnOpenRakumaListing"  class="btn-gray">📱 ラクマ出品</button>
+      <button id="btnOpenYahooListing"   class="btn-gray">📱 ヤフオク出品</button>
+    </div>
+  </div>
+
+  <!-- ⑩ 売れた時チェックリスト（緑） -->
+  <div class="card card-green">
+    <div class="badge badge-green">✅ 売れた時チェック</div>
+    <div class="progress-bar"><div class="progress-fill" id="soldProgressBar" style="width:0%"></div></div>
+    <div style="font-size:11px;color:var(--subtext);margin-bottom:8px;" id="soldProgress">0 / 8 完了</div>
+    <div id="soldChecklistItems"></div>
+    <button id="btnSoldReset" class="btn-gray mt8">🔄 チェックをリセット</button>
+  </div>
+
+  <!-- ⑪ コメント対応 -->
+  <div class="card card-gray">
+    <div class="badge badge-gray">💬 コメント対応</div>
+    <select id="commentTemplate">
+      <option value="">テンプレを選択</option>
+      <option value="値下げは可能ですか">値下げは可能ですか</option>
+      <option value="いつ発送できますか">いつ発送できますか</option>
+      <option value="購入しても大丈夫ですか">購入しても大丈夫ですか</option>
+      <option value="専用にできますか">専用にできますか</option>
+    </select>
+    <textarea id="commentText" class="mt6"></textarea>
+    <button id="btnCopyComment" class="btn-gray mt6">📋 コメント文をコピー</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
