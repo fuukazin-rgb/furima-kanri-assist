@@ -3,6 +3,32 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // ── ★追加：画像をバイナリで取得（ラクマ新フォーム用）──
+  if (message?.type === "FETCH_IMAGE_BINARY") {
+    (async () => {
+      try {
+        const res = await fetch(message.url, { credentials: "omit" });
+        if (!res.ok) {
+          sendResponse({ ok: false, error: `HTTP ${res.status}` });
+          return;
+        }
+        const buf = await res.arrayBuffer();
+        const bytes = Array.from(new Uint8Array(buf));
+        const mime = res.headers.get("content-type") || "image/jpeg";
+        const index = typeof message.index === "number" ? message.index : 0;
+        sendResponse({
+          ok: true,
+          bytes,
+          mime,
+          filenameBase: `mercari_${index + 1}`
+        });
+      } catch (error) {
+        sendResponse({ ok: false, error: String(error) });
+      }
+    })();
+    return true;
+  }
+
   if (message?.type === "BG_FETCH_BLOB") {
     (async () => {
       try {
@@ -74,7 +100,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           el.click();
           await sleep(100);
 
-          // execCommand方式（Console成功確認済み）
           el.select?.();
           document.execCommand("selectAll", false, null);
           document.execCommand("delete", false, null);

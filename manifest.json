@@ -1,28 +1,30 @@
 {
   "manifest_version": 3,
-  "name": "フリマ管理アシスト｜メルカリ→ラクマ・Yahooフリマ自動出品",
-  "version": "1.3.1",
-  "description": "メルカリの商品情報をラクマ・ヤフオクに自動コピー。マルチフリマ出品を効率化。",
+  "name": "フリマ管理アシスト｜メルカリ→ラクマ・Yahoo!フリマ・ヤフオク",
+  "short_name": "フリマ管理アシスト",
+  "version": "1.5.2",
+  "description": "メルカリの商品ページから商品情報を取得し、ラクマ・Yahoo!フリマ・ヤフオクの出品フォーム入力を効率化。管理番号で一元管理し、二重販売を防ぎます。",
+  "minimum_chrome_version": "116",
   "permissions": [
     "storage",
     "activeTab",
     "scripting",
     "tabs",
     "clipboardWrite",
-    "clipboardRead",
     "downloads"
   ],
   "host_permissions": [
     "https://furima-license-server-1.onrender.com/*",
     "https://jp.mercari.com/*",
     "https://www.mercari.com/*",
-    "https://static.mercdn.net/*",
     "https://*.mercdn.net/*",
     "https://fril.jp/*",
     "https://*.fril.jp/*",
     "https://rakuma.rakuten.co.jp/*",
     "https://*.rakuma.rakuten.co.jp/*",
     "https://paypayfleamarket.yahoo.co.jp/*",
+    "https://paypayfleamarket-sec.yahoo.co.jp/*",
+    "https://*.paypayfleamarket.yahoo.co.jp/*",
     "https://auctions.yahoo.co.jp/*",
     "https://*.auctions.yahoo.co.jp/*"
   ],
@@ -33,14 +35,14 @@
     "default_popup": "popup.html",
     "default_title": "フリマ管理アシスト",
     "default_icon": {
-      "16":  "icons/icon16.png",
-      "48":  "icons/icon48.png",
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     }
   },
   "icons": {
-    "16":  "icons/icon16.png",
-    "48":  "icons/icon48.png",
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
   "web_accessible_resources": [
@@ -48,6 +50,7 @@
       "resources": [
         "mercari_scrape.js",
         "rakuma_fill.js",
+        "paypay_fill.js",
         "yahoo_desc_fill.js",
         "yahoo_price_fill.js",
         "yahoo_title_fill.js"
@@ -59,9 +62,10 @@
         "https://*.fril.jp/*",
         "https://rakuma.rakuten.co.jp/*",
         "https://*.rakuma.rakuten.co.jp/*",
+        "https://paypayfleamarket.yahoo.co.jp/*",
+        "https://paypayfleamarket-sec.yahoo.co.jp/*",
         "https://auctions.yahoo.co.jp/*",
-        "https://*.auctions.yahoo.co.jp/*",
-        "https://paypayfleamarket.yahoo.co.jp/*"
+        "https://*.auctions.yahoo.co.jp/*"
       ]
     }
   ],

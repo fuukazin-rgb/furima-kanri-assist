@@ -44,6 +44,26 @@ async function postJsonKanri(path, body) {
   return json;
 }
 
+// ★追加: ライセンスキーをマスク表示する
+//    FKA-DEV0-TEST-0001 → FKA-••••-••••-0001
+function maskLicenseKey(key) {
+  const k = String(key || "").trim();
+  if (!k) return "";
+  const parts = k.split("-");
+  if (parts.length < 2) return k.slice(0, 4) + "••••";
+  const head = parts[0];
+  const tail = parts[parts.length - 1];
+  const middle = parts.slice(1, -1).map(() => "••••").join("-");
+  return middle ? `${head}-${middle}-${tail}` : `${head}-${tail}`;
+}
+
+// ★追加: プラン名を日本語に
+function planLabelKanri(plan) {
+  if (plan === "year")  return "年額プラン";
+  if (plan === "month") return "月額プラン";
+  return "";
+}
+
 // ─── トライアル ──────────────────────────────────────────────
 async function startTrialKanri() {
   const fp  = await getFingerprintKanri();
@@ -71,35 +91,43 @@ async function verifyLicenseKanri(key) {
 }
 
 async function checkSavedLicenseKanri() {
-  const s = await chrome.storage.local.get(["kanri_license_key","kanri_license_verified","kanri_license_verified_at"]);
+  const s = await chrome.storage.local.get([
+    "kanri_license_key","kanri_license_verified","kanri_license_verified_at","kanri_license_plan"
+  ]);
   if (!s.kanri_license_verified || !s.kanri_license_key) return { valid: false };
   try {
     const did = await getOrCreateDeviceIdKanri();
     const fp  = await getFingerprintKanri();
     const r   = await postJsonKanri("/verify-kanri", { licenseKey: s.kanri_license_key, deviceId: did, fingerprint: fp });
     if (r?.valid) {
-      await chrome.storage.local.set({ kanri_license_verified_at: Date.now() });
-      return { valid: true, key: s.kanri_license_key, degraded: false };
+      const plan = r.plan || s.kanri_license_plan || "";
+      await chrome.storage.local.set({
+        kanri_license_verified_at: Date.now(),
+        kanri_license_plan: plan
+      });
+      return { valid: true, key: s.kanri_license_key, plan, degraded: false };
     }
-    await chrome.storage.local.remove(["kanri_license_key","kanri_license_verified","kanri_license_verified_at"]);
+    await chrome.storage.local.remove([
+      "kanri_license_key","kanri_license_verified","kanri_license_verified_at","kanri_license_plan"
+    ]);
     return { valid: false };
   } catch(e) {
     // オフライン猶予
     const last = Number(s.kanri_license_verified_at || 0);
     if (last && Date.now() - last <= OFFLINE_GRACE_MS_KANRI) {
-      return { valid: true, key: s.kanri_license_key, degraded: true };
+      return { valid: true, key: s.kanri_license_key, plan: s.kanri_license_plan || "", degraded: true };
     }
     return { valid: false, serverError: true };
   }
 }
 
-// ─── アクセス権判定（修正済み）────────────────────────────
-// ★ここを修正: kanri_trial_approved（ボタンを押した記録）がある場合のみ通過
-// kanri_server_error_at だけでは通過しない
+// ─── アクセス権判定 ────────────────────────────────────────
 async function canUseKanri() {
   // ライセンス認証済み
   const lic = await checkSavedLicenseKanri();
-  if (lic.valid) return { ok: true, reason: "license", degraded: lic.degraded };
+  if (lic.valid) {
+    return { ok: true, reason: "license", degraded: lic.degraded, key: lic.key, plan: lic.plan };
+  }
 
   // サーバーでトライアルが有効か確認
   try {
@@ -127,7 +155,8 @@ async function canUseKanri() {
 // ─── UIロック/アンロック ─────────────────────────────────────
 const KANRI_LOCK_BTNS = ["btnGetMercari","btnReload","btnRakuma","btnYahoo",
   "btnFormatTitle","btnFormatDesc","btnCheck","btnStale","btnProfit",
-  "btnCalcShipping","btnSaveSiteMeta","btnSoldMercari","btnSoldRakuma","btnSoldYahoo"];
+  "btnCalcShipping","btnSaveSiteMeta","btnSoldMercari","btnSoldRakuma",
+  "btnSoldPaypay","btnSoldYahoo"];
 
 function lockMainButtons() {
   KANRI_LOCK_BTNS.forEach(id => { const el=$(id); if(el){ el.disabled=true; el.style.opacity="0.4"; } });
@@ -146,7 +175,6 @@ function showLicenseOverlay() {
     ov.style.zIndex = "999999";
     ov.style.alignItems = "center";
     ov.style.justifyContent = "center";
-    ov.style.background = "rgba(15,23,42,0.97)";
     // input欄が確実にクリックできるようにする
     const input = ov.querySelector("#licenseKeyInput");
     if (input) {
@@ -161,32 +189,72 @@ function hideLicenseOverlay() {
   if (ov) { ov.style.display = "none"; }
 }
 
+// ★修正: 認証済み表示を確実にする
+//   - trialMode を "0" にしてカウントダウンによる上書きを止める
+//   - buyBanner / purchaseCard を隠す
+//   - マスクしたキーとプランを表示する
+function applyLicensedUI(state) {
+  const banner = $("trialBanner");
+  const buyBanner = $("buyBanner");
+  const pc = $("purchaseCard");
+
+  // ★最重要: カウントダウンによる上書きを停止
+  if (banner) {
+    banner.dataset.trialMode = "0";
+    banner.style.display = "block";
+
+    const masked = maskLicenseKey(state.key || "");
+    const planTxt = planLabelKanri(state.plan || "");
+    const detail = [planTxt, masked].filter(Boolean).join(" ・ ");
+
+    if (state.degraded) {
+      banner.style.background   = "rgba(254,243,199,0.75)";
+      banner.style.borderColor  = "rgba(245,158,11,0.6)";
+      banner.style.color        = "#92400e";
+      banner.textContent = detail
+        ? `⚠ ライセンス認証済み（サーバー確認待ち）\n${detail}`
+        : "⚠ ライセンス認証済み（サーバー確認待ち）";
+    } else {
+      banner.style.background   = "rgba(209,250,229,0.80)";
+      banner.style.borderColor  = "rgba(110,231,183,0.8)";
+      banner.style.color        = "#065f46";
+      banner.textContent = detail
+        ? `✅ ライセンス認証済み\n${detail}`
+        : "✅ ライセンス認証済み";
+    }
+    banner.style.whiteSpace = "pre-line";
+    banner.style.lineHeight = "1.7";
+  }
+
+  // 認証済みなら購入導線は不要
+  if (buyBanner) buyBanner.style.display = "none";
+  if (pc) pc.style.display = "none";
+}
+
 // ─── トライアルバナー更新 ────────────────────────────────────
 function updateTrialBanner(state) {
   const banner = $("trialBanner");
   if (!banner) return;
+
   if (state.reason === "license") {
-    banner.style.display = "block";
-    banner.style.background = state.degraded ? "#fef3c7" : "#d1fae5";
-    banner.style.color       = state.degraded ? "#92400e" : "#065f46";
-    banner.style.borderColor = state.degraded ? "#f59e0b" : "#6ee7b7";
-    banner.textContent = state.degraded ? "⚠ ライセンス認証済み（サーバー確認待ち）" : "✅ ライセンス認証済み";
-  } else if (state.reason === "trial") {
-    banner.style.display = "block";
-    banner.style.background = "#dbeafe";
-    banner.style.color       = "#1d4ed8";
-    banner.style.borderColor = "#93c5fd";
-    // 時計はinit()が書き換えるのでここではremainingTextを設定
-    banner.dataset.trialMode = "1";
+    applyLicensedUI(state);
+    return;
   }
-  // 購入バナーをトライアル中に表示
-  const buyBanner = $("buyBanner");
-  if (buyBanner && state.reason === "trial") {
-    buyBanner.style.display = "block";
+
+  if (state.reason === "trial") {
+    banner.style.display = "block";
+    banner.style.background  = "rgba(219,234,254,0.75)";
+    banner.style.color       = "#1d4ed8";
+    banner.style.borderColor = "rgba(147,197,253,0.8)";
+    // 時計はinit()が書き換えるのでここではフラグを立てる
+    banner.dataset.trialMode = "1";
+
+    const buyBanner = $("buyBanner");
+    if (buyBanner) buyBanner.style.display = "block";
   }
 }
 
-// ─── ライセンス認証ボタン処理 ────────────────────────────────
+// ─── ライセンス認証ボタン処理（オーバーレイ側）──────────────
 async function handleLicenseVerify() {
   const input   = $("licenseKeyInput");
   const msgEl   = $("licenseMsg");
@@ -205,15 +273,17 @@ async function handleLicenseVerify() {
   try {
     const r = await verifyLicenseKanri(key);
     if (r?.valid) {
+      const plan = r.plan || "";
       await chrome.storage.local.set({
         kanri_license_key:         key,
         kanri_license_verified:    true,
-        kanri_license_verified_at: Date.now()
+        kanri_license_verified_at: Date.now(),
+        kanri_license_plan:        plan
       });
       if(msgEl) { msgEl.textContent = "✅ 認証完了！"; msgEl.style.color="#0f766e"; }
       hideLicenseOverlay();
       unlockMainButtons();
-      updateTrialBanner({ reason: "license", degraded: false });
+      updateTrialBanner({ reason: "license", degraded: false, key, plan });
     } else {
       if(msgEl) { msgEl.textContent = r?.message || "無効なライセンスキーです"; msgEl.style.color="#dc2626"; }
     }
@@ -224,9 +294,7 @@ async function handleLicenseVerify() {
   }
 }
 
-// ─── トライアル開始ボタン処理（修正済み）────────────────────
-// ★ここを修正: ボタンを押したら必ず kanri_trial_approved を保存
-// サーバー成功・失敗どちらの場合も保存してオーバーレイを閉じる
+// ─── トライアル開始ボタン処理 ────────────────────────────────
 async function handleTrialStart() {
   const btn   = $("btnTrialStart");
   const msgEl = $("licenseMsg");
@@ -236,14 +304,12 @@ async function handleTrialStart() {
   try {
     const r = await startTrialKanri();
     if (r?.valid) {
-      // サーバー成功: trial_approved を保存してオーバーレイを閉じる
       await chrome.storage.local.set({
         kanri_trial_approved:    true,
         kanri_trial_approved_at: Date.now()
       });
       await chrome.storage.local.remove(["kanri_server_error_at"]);
       if (r.endAt) await chrome.storage.local.set({ kanri_trial_end_at: r.endAt });
-      // 残り時間を表示してから閉じる
       if(msgEl) {
         msgEl.style.color = "#0f766e";
         msgEl.style.fontSize = "15px";
@@ -254,7 +320,6 @@ async function handleTrialStart() {
       hideLicenseOverlay();
       unlockMainButtons();
       updateTrialBanner({ reason: "trial", remainingText: r.remainingText });
-      // 購入カードを表示
       const pc1 = $("purchaseCard");
       if(pc1) pc1.style.display = "block";
       if(msgEl) msgEl.textContent = "";
@@ -264,7 +329,7 @@ async function handleTrialStart() {
     console.warn("trial start error:", e.message);
   }
 
-  // サーバーエラー・失敗時でも trial_approved を保存して72時間は使用可能にする
+  // サーバーエラー・失敗時でも72時間は使用可能にする
   await chrome.storage.local.set({
     kanri_trial_approved:    true,
     kanri_trial_approved_at: Date.now()
@@ -274,13 +339,12 @@ async function handleTrialStart() {
   const banner = $("trialBanner");
   if (banner) {
     banner.style.display = "block";
-    banner.style.background = "#fef3c7";
-    banner.style.color = "#92400e";
-    banner.style.borderColor = "#f59e0b";
+    banner.style.background  = "rgba(254,243,199,0.75)";
+    banner.style.color       = "#92400e";
+    banner.style.borderColor = "rgba(245,158,11,0.6)";
     banner.dataset.trialMode = "1";
     banner.textContent = "⚠ サーバー確認待ち（72時間以内は使用可能）";
   }
-  // 購入カードを表示
   const pc2 = $("purchaseCard");
   if(pc2) pc2.style.display = "block";
   if(btn) btn.disabled = false;
@@ -288,7 +352,6 @@ async function handleTrialStart() {
 
 // ─── ライセンスチェック起動 ──────────────────────────────────
 async function initLicenseKanri() {
-  // ボタンイベント登録
   const verifyBtn = $("btnLicenseVerify");
   if (verifyBtn) verifyBtn.addEventListener("click", handleLicenseVerify);
   const trialBtn  = $("btnTrialStart");
@@ -310,16 +373,15 @@ async function initLicenseKanri() {
     try {
       const r = await verifyLicenseKanri(key);
       if (r?.valid) {
+        const plan = r.plan || "";
         await chrome.storage.local.set({
           kanri_license_key:         key,
           kanri_license_verified:    true,
-          kanri_license_verified_at: Date.now()
+          kanri_license_verified_at: Date.now(),
+          kanri_license_plan:        plan
         });
         if(msgEl) { msgEl.textContent = "✅ 認証完了！"; msgEl.style.color="#0f766e"; }
-        // 購入カードを非表示
-        const pc = $("purchaseCard");
-        if(pc) pc.style.display = "none";
-        updateTrialBanner({ reason: "license", degraded: false });
+        updateTrialBanner({ reason: "license", degraded: false, key, plan });
       } else {
         if(msgEl) { msgEl.textContent = r?.message || "無効なライセンスキーです"; msgEl.style.color="#dc2626"; }
       }
@@ -336,20 +398,24 @@ async function initLicenseKanri() {
       hideLicenseOverlay();
       unlockMainButtons();
       updateTrialBanner(state);
-      // ライセンス認証済みなら購入カードを非表示、トライアル中は表示
-      const pc = $("purchaseCard");
-      if (pc) pc.style.display = (state.reason === "license") ? "none" : "block";
+      // トライアル中のみ購入カードを表示（ライセンス済みは applyLicensedUI が非表示にする）
+      if (state.reason === "trial") {
+        const pc = $("purchaseCard");
+        if (pc) pc.style.display = "block";
+      }
+      return state;
     } else {
       lockMainButtons();
       showLicenseOverlay();
+      return state;
     }
   } catch(e) {
     console.error("initLicenseKanri error:", e);
-    // エラー時はオーバーレイを出してオフラインメッセージ
     const msgEl = $("licenseMsg");
     if(msgEl) { msgEl.textContent = "サーバー接続エラー。時間をおいて再試行してください"; msgEl.style.color="#dc2626"; }
     lockMainButtons();
     showLicenseOverlay();
+    return { ok: false };
   }
 }
 
@@ -393,8 +459,6 @@ function getTodayString() {
 // ═══════════════════════════════════════════════════════════════
 //  管理番号
 //  形式: FM-YYYYMMDD-001
-//  同じ日は連番。日付が変わると1から再スタート。
-//  同一商品をメルカリ・ラクマ・Yahooフリマに出しても同じ番号で紐づけ管理できる。
 // ═══════════════════════════════════════════════════════════════
 async function generateManageId() {
   const today = getTodayString();
@@ -408,7 +472,6 @@ async function generateManageId() {
 
 // ═══════════════════════════════════════════════════════════════
 //  タイトル整形
-//  並び順: ブランド → 商品名(その他) → 型番 → サイズ → 色 → 状態
 // ═══════════════════════════════════════════════════════════════
 const BRAND_WORDS = [
   "ナイキ","NIKE","Nike",
@@ -481,20 +544,32 @@ function formatTitleSmart(title) {
 // ─── 出品先別タイトル調整 ───────────────────────────────────
 function formatTitleForSite(title, site) {
   const base = formatTitleSmart(title);
+
+  // ★修正: 旧コードは /^[\s\W]+/ で先頭の記号を除去していたが、
+  //   JavaScriptの \W は日本語もすべて該当するため、日本語だけの商品名が
+  //   丸ごと消えてしまっていた。除去する記号を明示的に列挙する方式に変更。
+  const stripLeadSymbols = (s) =>
+    s.replace(/^[\s\-–—_=+*＊#＃|｜/\\,.、。・:：;；!！?？"'“”()（）[\]{}]+/, "");
+
+  const clean = (s, limit) => {
+    const t = stripLeadSymbols(
+      s.replace(/[【】〔〕『』「」]/g, " ").replace(/\s+/g, " ").trim()
+    ).slice(0, limit);
+    // ★安全装置: 整形の結果が空になったら、整形前の値をそのまま使う
+    return t || String(s || "").trim().slice(0, limit);
+  };
+
   if (site === "rakuma") {
-    // ラクマ: 40文字制限、全角記号カット
-    return base.replace(/[【】〔〕『』「」]/g, " ").replace(/\s+/g, " ").trim().replace(/^[\s\W]+/, "").slice(0, 40);
+    return clean(base, 40);
   }
   if (site === "yahoo" || site === "auction") {
-    // Yahooフリマ / ヤフオク: 65文字制限
-    return base.replace(/[【】〔〕『』「」]/g, " ").replace(/\s+/g, " ").trim().replace(/^[\s\W]+/, "").slice(0, 65);
+    return clean(base, 65);
   }
   return base;
 }
 
 // ═══════════════════════════════════════════════════════════════
 //  説明文整形
-//  状態・発送・注意点を自動セクション化
 // ═══════════════════════════════════════════════════════════════
 function formatDescriptionSmart(description, condition, shipping, memo) {
   const desc  = String(description || "").trim();
@@ -535,7 +610,6 @@ function formatDescriptionForSite(description, site) {
   text = text.replace(/\n{3,}/g, "\n\n");
 
   if (site === "rakuma" || site === "yahoo") {
-    // 外部SNS誘導ワードをマスク
     text = text.replace(/LINE|Twitter|X\.com|Instagram|@[^\s]+/g, "※");
   }
 
@@ -657,7 +731,6 @@ function getCommentTemplate(key) {
 async function getActiveTab() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tabs[0]) return tabs[0];
-  // currentWindow fallback: lastFocusedWindow
   const tabs2 = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   return tabs2[0];
 }
@@ -691,7 +764,6 @@ function fillForm(item, meta) {
   $("description").value    = item?.description || "";
   $("condition").value      = item?.condition   || "";
   $("category").value       = item?.category    || "";
-  // brandフィールドがあれば表示
   const brandEl = $("brand");
   if (brandEl) brandEl.value = item?.brand || "";
 
@@ -712,8 +784,13 @@ function fillSiteMetaForm(siteMeta) {
   $("mercariMemo").value = siteMeta.mercariMemo || "";
   $("rakumaUrl").value   = siteMeta.rakumaUrl   || "";
   $("rakumaMemo").value  = siteMeta.rakumaMemo  || "";
+  $("paypayUrl").value   = siteMeta.paypayUrl   || "";
+  $("paypayMemo").value  = siteMeta.paypayMemo  || "";
   $("yahooUrl").value    = siteMeta.yahooUrl    || "";
   $("yahooMemo").value   = siteMeta.yahooMemo   || "";
+
+  // 復元した値をその場で検証表示
+  validateAllUrls();
 }
 
 function collectFormItem(oldItem = {}) {
@@ -746,6 +823,8 @@ function collectSiteMeta() {
     mercariMemo: $("mercariMemo").value.trim(),
     rakumaUrl:   $("rakumaUrl").value.trim(),
     rakumaMemo:  $("rakumaMemo").value.trim(),
+    paypayUrl:   $("paypayUrl").value.trim(),
+    paypayMemo:  $("paypayMemo").value.trim(),
     yahooUrl:    $("yahooUrl").value.trim(),
     yahooMemo:   $("yahooMemo").value.trim()
   };
@@ -759,305 +838,7 @@ async function autoSaveCurrentState() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  タブ内実行関数: メルカリスクレイプ
-// ═══════════════════════════════════════════════════════════════
-function mercariScrape() {
-  const text = (sel) => document.querySelector(sel)?.textContent?.trim() || "";
-  const title = text("h1") || text('[data-testid="name"]');
-
-  const priceText =
-    text('[data-testid="price"]') ||
-    text('span[class*="Price"]') ||
-    document.body.innerText.match(/¥\s?([\d,]+)/)?.[0] || "";
-  const price = (priceText.match(/[\d,]+/)?.[0] || "").replace(/,/g, "");
-
-  let description = "";
-  const bodyText  = document.body.innerText || "";
-  const descMatch = bodyText.match(/商品の説明\s*([\s\S]{20,1200})/);
-  if (descMatch) description = descMatch[1].split("商品の情報")[0].trim();
-
-  let condition = "";
-  const condMatch = bodyText.match(/商品の状態\s*\n([^\n]{2,30})/);
-  if (condMatch) condition = condMatch[1].trim();
-
-  let categoryPath = "";
-  const catEl = document.querySelector('[data-testid="item-detail-category"]');
-  if (catEl) {
-    categoryPath = catEl.innerText.trim().split(/\n/).map(s => s.trim()).filter(Boolean).join(" > ");
-  }
-  if (!categoryPath) {
-    const catMatch = bodyText.match(/カテゴリー?\s*\n([^\n]{2,60})/);
-    if (catMatch) categoryPath = catMatch[1].trim();
-  }
-
-  // ブランド取得
-  let brand = "";
-  const brandMatch = bodyText.match(/ブランド\s*\n([^\n]{1,40})/);
-  if (brandMatch) brand = brandMatch[1].trim();
-  // data-testid やDOMからも試みる
-  if (!brand) {
-    brand = text('[data-testid="brand"]') ||
-            text('[class*="brand"]') || "";
-  }
-
-  const images = [...document.querySelectorAll("img")]
-    .map((img) => img.src)
-    .filter((src) => /^https?:/.test(src))
-    .filter((src) => /mercdn|mercari/i.test(src))
-    .slice(0, 20);
-
-  return {
-    manageId: "",
-    title,
-    price,
-    description,
-    condition,
-    category:  categoryPath,
-    brand,
-    images,
-    sourceUrl: location.href,
-    savedAt:   new Date().toISOString()
-  };
-}
-
-// ═══════════════════════════════════════════════════════════════
-//  タブ内実行関数: ラクマ貼り付け
-//  ※ ラクマのフォーム構造に合わせたセレクタを使用
-// ═══════════════════════════════════════════════════════════════
-async function rakumaPaste(item) {
-  // React管理の入力欄に値をセットするためのヘルパー
-  function setNativeValue(el, value) {
-    const lastValue = el.value;
-    const proto = el.tagName === "TEXTAREA"
-      ? window.HTMLTextAreaElement.prototype
-      : window.HTMLInputElement.prototype;
-    const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set
-      || Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), "value")?.set;
-    if (setter) {
-      setter.call(el, value);
-    } else {
-      el.value = value;
-    }
-    const tracker = el._valueTracker;
-    if (tracker) tracker.setValue(lastValue);
-    el.dispatchEvent(new Event("input",  { bubbles: true }));
-    el.dispatchEvent(new Event("change", { bubbles: true }));
-    el.dispatchEvent(new Event("blur",   { bubbles: true }));
-  }
-
-  function trySet(selectors, value) {
-    for (const sel of selectors) {
-      const el = document.querySelector(sel);
-      if (el) {
-        el.scrollIntoView({ block: "center" });
-        el.focus();
-        setNativeValue(el, value);
-        return true;
-      }
-    }
-    return false;
-  }
-
-  // 商品名: ラクマは data-testid や placeholder で特定
-  const titleOk = trySet([
-    '[data-testid="item-name-input"]',
-    'input[name="name"]',
-    'input[placeholder*="40文字"]',
-    'input[placeholder*="商品名"]',
-    'input[placeholder*="ブランド名"]'
-  ], item.title || "");
-
-  // 価格: ラクマは placeholder="¥300〜¥9,999,999" の input
-  const priceOk = trySet([
-    '[data-testid="item-price-input"]',
-    'input[placeholder*="300"]',
-    'input[placeholder*="9,999,999"]',
-    'input[name="price"]',
-    'input[inputmode="numeric"]',
-    'input[type="number"]'
-  ], (item.price || "").replace(/[^\d]/g, ""));
-
-  // 説明文: ラクマは通常の textarea
-  const descOk = trySet([
-    '[data-testid="item-description-input"]',
-    'textarea[name="description"]',
-    'textarea[placeholder*="商品の説明"]',
-    'textarea[placeholder*="特徴"]',
-    "textarea"
-  ], item.description || "");
-
-  // ── 商品の状態（ラクマ）──
-  let conditionOk = false;
-  if (item.condition) {
-    // ラクマの状態マッピング
-    const COND_MAP = {
-      "新品、未使用":      ["新品、未使用", "新品未使用"],
-      "未使用に近い":      ["未使用に近い"],
-      "目立った傷や汚れなし": ["目立った傷や汚れなし"],
-      "やや傷や汚れあり":  ["やや傷や汚れあり"],
-      "傷や汚れあり":      ["傷や汚れあり"],
-      "全体的に状態が悪い": ["全体的に状態が悪い"]
-    };
-    const candidates = COND_MAP[item.condition] || [item.condition];
-
-    // select要素を試す
-    const sel = document.querySelector("select");
-    if (sel) {
-      for (const cand of candidates) {
-        const opt = [...sel.options].find(o =>
-          (o.text || o.value || "").includes(cand)
-        );
-        if (opt) {
-          setNativeValue(sel, opt.value);
-          conditionOk = true;
-          break;
-        }
-      }
-    }
-
-    // ボタン・リスト形式の場合
-    if (!conditionOk) {
-      const allEls = [...document.querySelectorAll("button, div, span, li, label")]
-        .filter(el => {
-          const s = window.getComputedStyle(el);
-          return s.display !== "none" && s.visibility !== "hidden";
-        });
-      for (const cand of candidates) {
-        const el = allEls.find(e => (e.textContent || "").trim() === cand);
-        if (el) { el.click(); conditionOk = true; break; }
-      }
-    }
-  }
-
-  // ── ブランド入力（ラクマはinput検索→候補クリック）──
-  let brandOk = false;
-  if (item.brand) {
-    // まずinputに直接入力を試みる
-    brandOk = trySet([
-      'input[placeholder*="ブランドを入力"]',
-      'input[placeholder*="ブランド名を入力"]',
-      'input[placeholder*="ブランド"]',
-      '[data-testid="brand-input"]'
-    ], item.brand);
-
-    if (brandOk) {
-      // 入力後500ms待ってサジェストから1件目をクリック
-      await new Promise(r => setTimeout(r, 600));
-      const suggest = document.querySelector(
-        '[class*="suggestion"] li:first-child, [class*="suggest"] li:first-child, ' +
-        '[class*="dropdown"] li:first-child, [role="option"]:first-child, ' +
-        '[class*="autocomplete"] div:first-child'
-      );
-      if (suggest) suggest.click();
-    }
-  }
-
-  // ── カテゴリー対策（ラクマ）──
-  // ラクマのカテゴリーはツリークリック選択のためinput入力はできない
-  // 代わりに: カテゴリー選択ボタンを自動クリックし、検索欄があればキーワードを入力
-  let categoryHint = "";
-  if (item.category) {
-    // カテゴリーの末尾（最も具体的なカテゴリー）を抽出
-    const catParts = item.category.split(/[>\/＞]/);
-    const lastCat  = catParts[catParts.length - 1]?.trim() || item.category;
-    categoryHint   = lastCat;
-
-    // カテゴリー選択ボタンをクリック
-    const catBtn = [...document.querySelectorAll("button, div, span")]
-      .find(el => {
-        const t = (el.textContent || "").trim();
-        return t === "カテゴリーを選択" || t === "カテゴリを選択" || t === "指定なし" || t === "カテゴリー";
-      });
-    if (catBtn) {
-      catBtn.click();
-      await new Promise(r => setTimeout(r, 500));
-      // カテゴリー検索inputがあればキーワード入力
-      const catSearch = document.querySelector(
-        'input[placeholder*="カテゴリー"], input[placeholder*="カテゴリ"], input[placeholder*="検索"]'
-      );
-      if (catSearch) {
-        catSearch.focus();
-        catSearch.value = lastCat;
-        catSearch.dispatchEvent(new Event("input", { bubbles: true }));
-      }
-    }
-  }
-
-  // ページ上に情報パネルを表示
-  const infoPanel = document.createElement("div");
-  Object.assign(infoPanel.style, {
-    position: "fixed", top: "8px", left: "50%",
-    transform: "translateX(-50%)", zIndex: "9999999",
-    background: "#1e40af", color: "#fff",
-    padding: "10px 14px", borderRadius: "10px",
-    fontSize: "12px", fontWeight: "600",
-    boxShadow: "0 8px 20px rgba(0,0,0,.3)",
-    maxWidth: "360px", width: "90%", lineHeight: "1.6"
-  });
-
-  const lines = [];
-  if (item.brand)    lines.push(`🏷 ブランド: ${item.brand}`);
-  if (categoryHint)  lines.push(`📂 カテゴリー参考: ${categoryHint}`);
-  if (item.category) lines.push(`　全パス: ${item.category}`);
-  if (lines.length)  infoPanel.textContent = lines.join("\n");
-
-  if (lines.length) {
-    document.body.appendChild(infoPanel);
-    // 30秒表示（カテゴリー選択に十分な時間）
-    setTimeout(() => infoPanel.remove(), 30000);
-  }
-
-  // ── 画像アップロード ──
-  // メルカリの画像URLをfetchしてfile inputに流し込む
-  let imageOk = false;
-  const images = Array.isArray(item.images) ? item.images.filter(u =>
-    u && u.includes("mercdn") && (u.includes("/photos/") || u.includes("photos.mercdn"))
-  ).slice(0, 15) : [];
-
-  if (images.length > 0) {
-    const fileInput = document.querySelector('input[type="file"]');
-    if (fileInput) {
-      const dt = new DataTransfer();
-      let loaded = 0;
-      for (let i = 0; i < images.length; i++) {
-        try {
-          // background.js経由でBlob取得（CORS回避）
-          const result = await new Promise(resolve => {
-            chrome.runtime.sendMessage(
-              { type: "BG_FETCH_BLOB", url: images[i] },
-              resolve
-            );
-          });
-          if (result?.ok && result.dataUrl) {
-            const res   = await fetch(result.dataUrl);
-            const blob  = await res.blob();
-            const ext   = (result.mimeType || "image/jpeg").includes("png") ? "png" : "jpg";
-            const file  = new File([blob], `img_${i + 1}.${ext}`, { type: result.mimeType || "image/jpeg" });
-            if (file.size > 0 && file.size <= 10 * 1024 * 1024) {
-              dt.items.add(file);
-              loaded++;
-            }
-          }
-        } catch (e) {
-          console.warn("画像取得失敗:", e);
-        }
-      }
-      if (dt.files.length > 0) {
-        fileInput.files = dt.files;
-        fileInput.dispatchEvent(new Event("change", { bubbles: true }));
-        await new Promise(r => setTimeout(r, 2000));
-        imageOk = true;
-      }
-    }
-  }
-
-  return { titleOk, priceOk, descOk, brandOk, conditionOk, categoryHint, imageOk, imageCount: images.length };
-}
-
-// ═══════════════════════════════════════════════════════════════
 //  タブ内実行関数: Yahooフリマ / ヤフオク貼り付け（非同期版）
-//  ヤフオクの説明欄は「通常入力」ボタンを押すと textarea が現れる仕組み。
-//  → ボタンを自動クリック → 500ms待機 → textarea に入力 の順で処理する。
 // ═══════════════════════════════════════════════════════════════
 async function yahooPasteAsync(item) {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -1077,12 +858,10 @@ async function yahooPasteAsync(item) {
     el.dispatchEvent(new Event("blur",   { bubbles: true }));
   }
 
-  // ── 説明文のみ処理（タイトル・価格は呼び出し元で別途処理）──
   const descText = item.description || "";
   let descOk = false;
   let diagInfo = "";
 
-  // 説明欄を特定
   const allTextareas   = [...document.querySelectorAll("textarea")];
   const allContentEdit = [...document.querySelectorAll('[contenteditable="true"]')];
   diagInfo = `textarea:${allTextareas.length}個 CE:${allContentEdit.length}個`;
@@ -1105,18 +884,21 @@ async function yahooPasteAsync(item) {
     targetEl.focus();
     await sleep(200);
 
-    // ── Step1: まずクリップボードに説明文を保存 ──
     try {
       await navigator.clipboard.writeText(descText);
     } catch(e) {}
 
-    // ── Step2: 全選択→削除→貼り付け（ClipboardEvent） ──
-    targetEl.select?.();
-    document.execCommand("selectAll", false, null);
-    document.execCommand("delete", false, null);
+    // ★フォーカスが説明文欄に無いまま execCommand を撃つと、
+    //   直前にフォーカスされていた価格欄の中身を消してしまう。必ず確認する。
+    if (document.activeElement === targetEl) {
+      targetEl.select?.();
+      document.execCommand("selectAll", false, null);
+      document.execCommand("delete", false, null);
+    } else {
+      console.warn("[furima] 説明文欄にフォーカスが無いため一括削除を見送りました");
+    }
     await sleep(100);
 
-    // カスタムClipboardEventでペースト
     try {
       const dt = new DataTransfer();
       dt.setData("text/plain", descText);
@@ -1127,13 +909,11 @@ async function yahooPasteAsync(item) {
       await sleep(300);
     } catch(e) {}
 
-    // ── Step3: execCommand insertText ──
     if ((targetEl.value || targetEl.textContent || "").trim().length === 0) {
       document.execCommand("insertText", false, descText);
       await sleep(200);
     }
 
-    // ── Step4: value直接セット（Reactのnative setter） ──
     if ((targetEl.value || targetEl.textContent || "").trim().length === 0 && targetEl.tagName === "TEXTAREA") {
       const ns = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
       if (ns) ns.call(targetEl, descText);
@@ -1160,7 +940,7 @@ async function yahooPasteAsync(item) {
   let imageCount = 0;
   const images   = Array.isArray(item.images) ? item.images.filter(u =>
     u && u.includes("mercdn") && (u.includes("/photos/") || u.includes("photos.mercdn"))
-  ).slice(0, 15) : [];
+  ).slice(0, 20) : [];
 
   if (images.length > 0) {
     const fileInput = document.querySelector('input[type="file"]');
@@ -1192,7 +972,6 @@ async function yahooPasteAsync(item) {
         fileInput.files = dt.files;
         fileInput.dispatchEvent(new Event("change", { bubbles: true }));
         await sleep(3000);
-        // 画像アップロード後にタイトルを入力（フォームリセット対策）
         const titleVal = item.title || "";
         if (titleVal) {
           const sels = ['#fleaTitleForm','input[name="Title"]','input[placeholder*="商品名、ブランド名、型番"]','input[placeholder*="商品名"]'];
@@ -1203,11 +982,16 @@ async function yahooPasteAsync(item) {
             titleEl.focus();
             titleEl.select?.();
             await sleep(200);
-            document.execCommand("selectAll", false, null);
-            document.execCommand("delete",     false, null);
-            await sleep(500);
-            document.execCommand("insertText", false, titleVal);
-            await sleep(300);
+            // ★ここも同じ。フォーカスが商品名欄に来ていなければ触らない。
+            if (document.activeElement === titleEl) {
+              document.execCommand("selectAll", false, null);
+              document.execCommand("delete",     false, null);
+              await sleep(500);
+              document.execCommand("insertText", false, titleVal);
+              await sleep(300);
+            } else {
+              console.warn("[furima] 商品名欄にフォーカスが無いため入力を見送りました");
+            }
           }
         }
         imageOk = true;
@@ -1215,7 +999,6 @@ async function yahooPasteAsync(item) {
     }
   }
 
-  // 診断情報（NGのときにステータスで原因特定に使う）
   const diagTextareas    = document.querySelectorAll("textarea").length;
   const diagEditable     = document.querySelectorAll('[contenteditable="true"]').length;
   const diagPlaceholders = [...document.querySelectorAll("textarea, [contenteditable='true']")]
@@ -1226,7 +1009,7 @@ async function yahooPasteAsync(item) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  初期化
+//  初期化ヘルパー
 // ═══════════════════════════════════════════════════════════════
 function bindAutoProfitEvents() {
   ["price", "shipping", "feeRate", "cost"].forEach((id) => {
@@ -1260,7 +1043,6 @@ $("btnCopyId").addEventListener("click", async () => {
 // ── メルカリ取得 ────────────────────────────────────────────
 $("btnGetMercari").addEventListener("click", async () => {
   try {
-    // メルカリのタブを探す
     const tabs = await chrome.tabs.query({ currentWindow: true });
     let tab = tabs.find(t => t.active);
     const mercariTab = tabs.find(t =>
@@ -1280,14 +1062,12 @@ $("btnGetMercari").addEventListener("click", async () => {
 
     setStatus("⏳ メルカリから情報を取得中...");
 
-    // files方式で実行
     await chrome.storage.local.set({ mercariScrapeResult: "", mercariData: null });
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       files:  ["mercari_scrape.js"]
     });
 
-    // 結果を待つ（最大5秒）
     let item = null;
     for (let i = 0; i < 25; i++) {
       await new Promise(r => setTimeout(r, 200));
@@ -1546,7 +1326,8 @@ $("btnSaveSiteMeta").addEventListener("click", async () => {
   const lines = [
     siteMeta.mercariUrl  && `メルカリ: ${siteMeta.mercariUrl}`,
     siteMeta.rakumaUrl   && `ラクマ: ${siteMeta.rakumaUrl}`,
-    siteMeta.yahooUrl    && `Yahooフリマ: ${siteMeta.yahooUrl}`
+    siteMeta.paypayUrl   && `Yahoo!フリマ: ${siteMeta.paypayUrl}`,
+    siteMeta.yahooUrl    && `ヤフオク: ${siteMeta.yahooUrl}`
   ].filter(Boolean);
 
   setStatus(
@@ -1693,6 +1474,40 @@ async function deleteListing(itemTitle) {
     return "not_found";
   }
 
+  // ── Yahoo!フリマ（PayPayフリマ） ──────────────────────────
+  // PayPayフリマは出品削除UIの変更が多いため、自動クリックはせず
+  // 「削除ボタンを赤枠で示して人間に押させる」方式を採用する。
+  // （誤爆で別の商品を消すリスクを避けるため）
+  if (/paypayfleamarket\.yahoo\.co\.jp/.test(url)) {
+    await sleep(2000);
+
+    const findByText = (texts) =>
+      [...document.querySelectorAll("button, a, [role='button']")].find(el => {
+        const t = (el.textContent || "").trim();
+        return texts.some(x => t.includes(x));
+      });
+
+    // 1) 削除ボタンが既にページ上にあるか
+    const delBtn = findByText(["この商品を削除", "出品を削除", "商品を削除", "削除する"]);
+    if (delBtn) {
+      delBtn.scrollIntoView({ behavior: "smooth", block: "center" });
+      delBtn.style.outline   = "4px solid red";
+      delBtn.style.boxShadow = "0 0 10px red";
+      return "need_manual";
+    }
+
+    // 2) 編集ページへ遷移できるか（削除は編集ページ内にある）
+    const editBtn = findByText(["商品を編集", "編集する", "出品を編集"]);
+    if (editBtn) {
+      editBtn.scrollIntoView({ behavior: "smooth", block: "center" });
+      editBtn.style.outline   = "4px solid red";
+      editBtn.style.boxShadow = "0 0 10px red";
+      return "need_manual";
+    }
+
+    return "not_found";
+  }
+
   if (/auctions\.yahoo\.co\.jp/.test(url)) {
     const aID = url.match(/[?&]aID=([\w]+)/)?.[1]
       || url.match(/\/auction\/([\w]+)/)?.[1];
@@ -1720,15 +1535,28 @@ async function showSoldAlert(soldSite) {
   const item     = (await loadItem()) || {};
   const title    = item.title || "この商品";
   const manageId = item.manageId || "";
-  const siteNames = { mercari: "メルカリ", rakuma: "ラクマ", yahoo: "Yahooフリマ/ヤフオク" };
+  const siteNames = {
+    mercari: "メルカリ",
+    rakuma:  "ラクマ",
+    paypay:  "Yahoo!フリマ",
+    yahoo:   "ヤフオク"
+  };
   const soldName  = siteNames[soldSite] || soldSite;
 
   const others = [];
-  if (soldSite !== "mercari" && siteMeta?.mercariUrl) others.push({ name: "メルカリ", url: siteMeta.mercariUrl });
+  if (soldSite !== "mercari" && siteMeta?.mercariUrl) {
+    others.push({ name: "メルカリ", url: siteMeta.mercariUrl });
+  }
   if (soldSite !== "rakuma"  && siteMeta?.rakumaUrl) {
+    // ラクマは商品ページからでなく「出品中一覧」から削除する仕様
     others.push({ name: "ラクマ", url: "https://fril.jp/sell" });
   }
-  if (soldSite !== "yahoo"   && siteMeta?.yahooUrl)   others.push({ name: "Yahoo",    url: siteMeta.yahooUrl });
+  if (soldSite !== "paypay"  && siteMeta?.paypayUrl) {
+    others.push({ name: "Yahoo!フリマ", url: siteMeta.paypayUrl });
+  }
+  if (soldSite !== "yahoo"   && siteMeta?.yahooUrl) {
+    others.push({ name: "ヤフオク", url: siteMeta.yahooUrl });
+  }
 
   await saveSoldCheck({});
   await renderSoldChecklist();
@@ -1789,6 +1617,7 @@ async function showSoldAlert(soldSite) {
 
 $("btnSoldMercari").addEventListener("click", () => showSoldAlert("mercari"));
 $("btnSoldRakuma").addEventListener("click",  () => showSoldAlert("rakuma"));
+$("btnSoldPaypay").addEventListener("click",  () => showSoldAlert("paypay"));
 $("btnSoldYahoo").addEventListener("click",   () => showSoldAlert("yahoo"));
 
 // ── URL自動取得 ──────────────────────────────────────────────
@@ -1801,12 +1630,21 @@ async function autoFillUrl(fieldId) {
       return;
     }
     $(fieldId).value = url;
+
+    // 取得したURLをその場で検証（出品フォームURLの誤登録を防ぐ）
+    const v = validateUrlField(fieldId);
+
     const siteMeta = collectSiteMeta();
     const item     = (await loadItem()) || {};
     if (item.manageId) siteMeta.manageId = item.manageId;
     await saveSiteMeta(siteMeta);
     window.scrollTo(0, 0);
-    setStatus(`✅ URLを取得して保存しました\n${url}`);
+
+    if (v && !v.ok) {
+      setStatus(`⚠ URLを取得しましたが、内容を確認してください\n${v.msg}\n${url}`);
+    } else {
+      setStatus(`✅ URLを取得して保存しました\n${url}`);
+    }
   } catch (e) {
     setStatus(`URL取得エラー: ${e.message}`);
   }
@@ -1814,7 +1652,121 @@ async function autoFillUrl(fieldId) {
 
 $("btnGetMercariUrl").addEventListener("click", () => autoFillUrl("mercariUrl"));
 $("btnGetRakumaUrl").addEventListener("click",  () => autoFillUrl("rakumaUrl"));
+$("btnGetPaypayUrl").addEventListener("click",  () => autoFillUrl("paypayUrl"));
 $("btnGetYahooUrl").addEventListener("click",   () => autoFillUrl("yahooUrl"));
+
+// ═══════════════════════════════════════════════════════════════
+//  URL検証
+//  「出品フォームのURL」を登録してしまうと、売れた時の自動削除が
+//  動かない。人為ミスをその場で気づかせるための検証。
+//  誤検知を避けるため、明確に間違っている場合だけ警告する。
+// ═══════════════════════════════════════════════════════════════
+const URL_RULES = {
+  mercariUrl: {
+    label: "メルカリ",
+    hint:  "jp.mercari.com/item/...",
+    hosts: [/(^|\.)mercari\.com$/i],
+    sellNg: [/\/sell(\/|$)/i, /\/mypage(\/|$)/i]
+  },
+  rakumaUrl: {
+    label: "ラクマ",
+    hint:  "fril.jp/...",
+    hosts: [/(^|\.)fril\.jp$/i, /(^|\.)rakuma\.rakuten\.co\.jp$/i],
+    sellNg: [/\/c\/sell(\/|$)/i, /\/sell(\/|$)/i, /\/item\/new/i, /\/mypage(\/|$)/i]
+  },
+  paypayUrl: {
+    label: "Yahoo!フリマ",
+    hint:  "paypayfleamarket.yahoo.co.jp/item/...",
+    hosts: [/(^|\.)paypayfleamarket\.yahoo\.co\.jp$/i],
+    sellNg: [/\/sell(\/|$)/i, /\/mypage(\/|$)/i]
+  },
+  yahooUrl: {
+    label: "ヤフオク",
+    hint:  "auctions.yahoo.co.jp/...",
+    hosts: [/(^|\.)auctions\.yahoo\.co\.jp$/i],
+    sellNg: [/\/sell(\/|$)/i, /show\/beforms/i, /show\/submit/i, /show\/amgr/i]
+  }
+};
+
+function setUrlMsg(fieldId, state, text) {
+  const input = $(fieldId);
+  const msg   = $(fieldId + "Msg");
+  if (input) input.classList.remove("url-ok", "url-warn");
+  if (msg)   msg.classList.remove("ok", "warn");
+
+  if (state === "none") {
+    if (msg) msg.textContent = "";
+    return;
+  }
+  if (input) input.classList.add(state === "ok" ? "url-ok" : "url-warn");
+  if (msg) {
+    msg.classList.add(state === "ok" ? "ok" : "warn");
+    msg.textContent = text;
+  }
+}
+
+function validateUrlField(fieldId) {
+  const rule = URL_RULES[fieldId];
+  const el   = $(fieldId);
+  if (!rule || !el) return null;
+
+  const raw = el.value.trim();
+
+  if (!raw) {
+    setUrlMsg(fieldId, "none", "");
+    return { ok: true, msg: "" };
+  }
+
+  let u;
+  try {
+    u = new URL(raw);
+  } catch (e) {
+    const m = `⚠ URLの形式が正しくありません（${rule.hint} の形式）`;
+    setUrlMsg(fieldId, "warn", m);
+    return { ok: false, msg: m };
+  }
+
+  if (!/^https?:$/.test(u.protocol)) {
+    const m = "⚠ http/https のURLを入れてください";
+    setUrlMsg(fieldId, "warn", m);
+    return { ok: false, msg: m };
+  }
+
+  // ドメイン違い（例: メルカリ欄に fril.jp を入れた）
+  if (!rule.hosts.some(re => re.test(u.hostname))) {
+    const m = `⚠ ${rule.label}の商品URLを入れてください（${rule.hint}）`;
+    setUrlMsg(fieldId, "warn", m);
+    return { ok: false, msg: m };
+  }
+
+  // 出品フォームのURL（これが本命の事故パターン）
+  const path = u.pathname + u.search;
+  if (rule.sellNg.some(re => re.test(path))) {
+    const m = "⚠ これは出品ページのURLです。出品後の商品ページURLを登録してください";
+    setUrlMsg(fieldId, "warn", m);
+    return { ok: false, msg: m };
+  }
+
+  // トップページ（商品ページではない）
+  if (u.pathname === "/" || u.pathname === "") {
+    const m = "⚠ トップページのURLです。商品ページのURLを登録してください";
+    setUrlMsg(fieldId, "warn", m);
+    return { ok: false, msg: m };
+  }
+
+  setUrlMsg(fieldId, "ok", "✅ OK");
+  return { ok: true, msg: "OK" };
+}
+
+function validateAllUrls() {
+  Object.keys(URL_RULES).forEach(id => validateUrlField(id));
+}
+
+Object.keys(URL_RULES).forEach(id => {
+  const el = $(id);
+  if (el) el.addEventListener("input", () => validateUrlField(id));
+});
+
 $("commentTemplate").addEventListener("change", (e) => {
   $("commentText").value = getCommentTemplate(e.target.value);
 });
@@ -1896,11 +1848,188 @@ $("btnRakuma").addEventListener("click", async () => {
 });
 
 // ── Yahooフリマ / ヤフオク貼り付け ─────────────────────────
+// ═══════════════════════════════════════════════════════════════
+//  Yahoo!フリマ（PayPayフリマ）貼り付け
+//  paypay_fill.js は chrome.storage.local の "mercariData" を
+//  自分で読む設計。ただし mercariData は「メルカリで取得」した
+//  時点の生データなので、フォームでの編集や整形が反映されない。
+//  → 注入直前に、現在のフォーム内容で mercariData を上書きする。
+// ═══════════════════════════════════════════════════════════════
+async function runPaypayFill(tab, item, stored, meta) {
+  setStatus("⏳ Yahoo!フリマに貼り付け中...");
+
+  // ★重要: ポップアップの入力欄が空でも、保存済みデータで補う
+  //   （別タブでポップアップを開き直すと入力欄が空になる場合があるため）
+  const saved = (await loadItem()) || {};
+  const pick = (a, b, c) => {
+    const v1 = String(a || "").trim(); if (v1) return v1;
+    const v2 = String(b || "").trim(); if (v2) return v2;
+    return String(c || "").trim();
+  };
+
+  const rawTitle = pick(item.title,       stored.title,       saved.title);
+  const rawPrice = pick(item.price,       stored.price,       saved.price);
+  const rawDesc  = pick(item.description, stored.description, saved.description);
+  const rawCond  = pick(item.condition,   stored.condition,   saved.condition);
+
+  const paypayItem = {
+    ...saved,
+    ...stored,
+    title: formatTitleForSite(rawTitle, "yahoo"),
+    price: String(rawPrice).replace(/[^\d]/g, ""),
+    description: formatDescriptionForSite(
+      formatDescriptionSmart(rawDesc, rawCond, meta.shipping, meta.inventoryMemo),
+      "yahoo"
+    ),
+    condition:    rawCond,
+    category:     stored.category     || saved.category     || item.category || "",
+    categoryPath: stored.categoryPath || saved.categoryPath || stored.category || saved.category || "",
+    brand:        stored.brand  || saved.brand  || "",
+    images:       (stored.images && stored.images.length ? stored.images : saved.images) || []
+  };
+
+  // ★事前チェック: 商品名がどこにも無ければ注入せず即エラー
+  if (!paypayItem.title) {
+    setStatus(
+      "⚠ 商品名が空のため貼り付けできません。\n\n" +
+      "・メルカリの商品ページで「メルカリで取得」を実行する\n" +
+      "・または管理番号で商品を呼び出してから実行してください\n\n" +
+      "【診断情報】\n" +
+      `入力欄: 「${item.title || "空"}」\n` +
+      `保存データ: 「${saved.title || "空"}」\n` +
+      "※両方とも空の場合、取得データが保存されていません。"
+    );
+    return;
+  }
+
+  await chrome.storage.local.set({
+    paypayFillData:    paypayItem,   // ★管理アシスト用（優先して読まれる）
+    mercariData:       paypayItem,   // Pro互換のフォールバック
+    paypayFillResult:  "",
+    paypayFillStarted: ""
+  });
+
+  // ★注入。失敗したら理由をそのまま表示する
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files:  ["paypay_fill.js"]
+    });
+  } catch (e) {
+    setStatus(
+      "⚠ Yahoo!フリマのページにスクリプトを注入できませんでした。\n\n" +
+      "エラー: " + (e?.message || String(e)) + "\n\n" +
+      "・ページを Cmd+R でリロードしてから、もう一度お試しください\n" +
+      "・chrome://extensions で拡張機能を🔄再読み込みしてください"
+    );
+    return;
+  }
+
+  // ── 第1段階: 起動したかを3秒だけ待つ ──────────────────
+  let started = false;
+  for (let i = 0; i < 15; i++) {
+    await new Promise(r => setTimeout(r, 200));
+    const res = await chrome.storage.local.get(["paypayFillStarted", "paypayFillResult"]);
+    if (res.paypayFillStarted) { started = true; break; }
+    if (res.paypayFillResult) { started = true; break; }
+  }
+
+  if (!started) {
+    setStatus(
+      "⚠ Yahoo!フリマのページでスクリプトが起動しませんでした。\n\n" +
+      "次の順で試してください。\n" +
+      "① Yahoo!フリマのページを Cmd+R でリロード\n" +
+      "② chrome://extensions で拡張機能を🔄再読み込み\n" +
+      "③ もう一度「Yahooに貼り付け」を押す\n\n" +
+      `現在のタブ: ${(tab?.url || "不明").slice(0, 70)}`
+    );
+    return;
+  }
+
+  // ── 第2段階: 入力完了を待つ（画像アップロードがあるので最大40秒）──
+  setStatus("⏳ Yahoo!フリマに入力中...（画像のアップロードに時間がかかります）");
+
+  let result = null;
+  for (let i = 0; i < 200; i++) {
+    await new Promise(r => setTimeout(r, 200));
+    const res = await chrome.storage.local.get(["paypayFillResult"]);
+    const raw = res.paypayFillResult;
+    if (raw !== "" && raw !== undefined && raw !== null) {
+      if (typeof raw === "string") {
+        try { result = JSON.parse(raw); } catch (e) { result = { raw }; }
+      } else {
+        result = raw;
+      }
+      break;
+    }
+  }
+
+  if (!result) {
+    setStatus(
+      "⚠ 入力は始まりましたが、40秒以内に完了しませんでした。\n\n" +
+      "画像の枚数が多いと時間がかかることがあります。\n" +
+      "ページの入力状況を直接ご確認ください。"
+    );
+    return;
+  }
+
+  // ★スクリプト側が中断した場合は、その理由をそのまま表示する
+  if (result.error) {
+    setStatus(
+      "⚠ Yahoo!フリマの貼り付けが中断されました。\n\n" +
+      "理由: " + result.error
+    );
+    return;
+  }
+
+  const mark = (v) => (v ? "✅ OK" : "❌ NG");
+  const lines = [
+    "Yahoo!フリマ 貼り付け結果",
+    `管理番号: ${item.manageId || "未設定"}`,
+    `商品名: ${mark(result.titleOk)}`,
+    `価格: ${mark(result.priceOk)}`,
+    `説明文: ${mark(result.descOk)}`,
+    `商品の状態: ${mark(result.conditionOk)}`,
+    `ブランド: ${mark(result.brandOk)}`,
+    `画像: ${mark(result.imageOk)}`
+  ];
+
+  if (Array.isArray(result.ngList) && result.ngList.length) {
+    lines.push("", "未入力の項目:", ...result.ngList.map(x => `・${x}`));
+  }
+  lines.push("", "※ カテゴリと配送方法は手動で選んでください。");
+
+  setStatus(lines.join("\n"));
+}
+
 $("btnYahoo").addEventListener("click", async () => {
   try {
     const item   = collectFormItem((await loadItem()) || {});
     const stored = (await loadItem()) || {};
     const meta   = collectMeta();
+    await saveItem(item);
+
+    const tab    = await getActiveTab();
+    const tabUrl = tab?.url || "";
+
+    // ★ 開いているタブのURLで貼り付け先を自動判定する
+    //    Yahoo!フリマ  → paypay_fill.js
+    //    ヤフオク      → 従来処理（yahoo_desc_fill.js ほか）
+    if (/paypayfleamarket/.test(tabUrl)) {
+      await runPaypayFill(tab, item, stored, meta);
+      return;
+    }
+
+    if (!/auctions\.yahoo\.co\.jp/.test(tabUrl)) {
+      setStatus(
+        "⚠ 貼り付け先のページを開いてから押してください。\n\n" +
+        "・Yahoo!フリマ → paypayfleamarket.yahoo.co.jp/sell\n" +
+        "・ヤフオク → auctions.yahoo.co.jp（出品フォーム）\n\n" +
+        `現在のタブ: ${tabUrl.slice(0, 60) || "不明"}`
+      );
+      return;
+    }
+
     const yahooItem = {
       ...item,
       images:   stored.images   || [],
@@ -1912,9 +2041,6 @@ $("btnYahoo").addEventListener("click", async () => {
         "yahoo"
       )
     };
-    await saveItem(item);
-
-    const tab = await getActiveTab();
 
     await chrome.storage.local.set({ yahooFillDesc: yahooItem.description, yahooFillDescResult: "" });
     await chrome.scripting.executeScript({
@@ -1928,19 +2054,6 @@ $("btnYahoo").addEventListener("click", async () => {
       const res = await chrome.storage.local.get(["yahooFillDescResult"]);
       if (res.yahooFillDescResult === "ok")  { descOk = true;  break; }
       if (res.yahooFillDescResult === "ng")  { descOk = false; break; }
-    }
-
-    await chrome.storage.local.set({ yahooFillPrice: (yahooItem.price || "").replace(/[^\d]/g, ""), yahooFillPriceResult: "" });
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ["yahoo_price_fill.js"]
-    });
-    let priceOk = false;
-    for (let i = 0; i < 20; i++) {
-      await new Promise(r => setTimeout(r, 200));
-      const res = await chrome.storage.local.get(["yahooFillPriceResult"]);
-      if (res.yahooFillPriceResult === "ok") { priceOk = true; break; }
-      if (res.yahooFillPriceResult === "ng") { break; }
     }
 
     await chrome.scripting.executeScript({
@@ -1979,11 +2092,10 @@ $("btnYahoo").addEventListener("click", async () => {
           'input[placeholder*="商品名"]'
         ], it.title || "");
 
-        const priceOk = trySet([
-          'input[name="price"]','input[name="StartPrice"]','input[name="BidOrBuyPrice"]',
-          'input[placeholder*="¥300"]','input[placeholder*="価格"]',
-          'input[inputmode="numeric"]','input[type="number"]'
-        ], (it.price || "").replace(/[^\d]/g, ""));
+        // ★価格は yahoo_price_fill.js が最後にまとめて担当する。
+        //   ここで入力するとフォーカスが価格欄に残り、後続の
+        //   execCommand("delete") に巻き込まれて中身が消えるため削除した。
+        try { document.activeElement?.blur?.(); } catch (_) {}
 
         if (it.condition) {
           const COND_MAP = {
@@ -2066,6 +2178,28 @@ $("btnYahoo").addEventListener("click", async () => {
       titleOk = bgRes?.result === "ok";
     } catch(e) {
       console.warn("Yahoo商品名入力エラー:", e);
+    }
+
+    // ═══════════════════════════════════════════════
+    //  ★価格入力は必ず最後に行う
+    //    画像・商品名の処理は document.execCommand("delete") を使う。
+    //    execCommand はフォーカス中の要素に効くため、価格を先に入れると
+    //    その削除命令に巻き込まれて価格欄が空になっていた（2026-07-18 判明）。
+    // ═══════════════════════════════════════════════
+    try { await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => { try { document.activeElement?.blur?.(); } catch (_) {} } }); } catch (_) {}
+    await new Promise(r => setTimeout(r, 500));
+
+    await chrome.storage.local.set({ yahooFillPrice: (yahooItem.price || "").replace(/[^\d]/g, ""), yahooFillPriceResult: "" });
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["yahoo_price_fill.js"]
+    });
+    let priceOk = false;
+    for (let i = 0; i < 40; i++) {
+      await new Promise(r => setTimeout(r, 200));
+      const res = await chrome.storage.local.get(["yahooFillPriceResult"]);
+      if (res.yahooFillPriceResult === "ok") { priceOk = true; break; }
+      if (res.yahooFillPriceResult === "ng") { break; }
     }
 
     const catLine = yahooItem.category ? `\nカテゴリー: 30秒ヒント表示中` : "";
@@ -2157,7 +2291,7 @@ $("btnCalcShipping").addEventListener("click", () => {
       <div class="shipping-price">¥${r.price.toLocaleString()}</div>
     </div>`).join("");
 
-  area.innerHTML = `<div class="shipping-result" style="margin-top:8px;">${rows}</div>`;
+  area.innerHTML = `<div class="shipping-result">${rows}</div>`;
 
   const cheapest = results[0];
   setStatus(`📮 ${cm}cm の送料目安\n最安: ${cheapest.name} ¥${cheapest.price}\n（下に一覧表示）`);
@@ -2178,6 +2312,9 @@ $("btnOpenMercariListing").addEventListener("click", () => {
 });
 $("btnOpenRakumaListing").addEventListener("click", () => {
   chrome.tabs.create({ url: LISTING_URLS.rakuma });
+});
+$("btnOpenPaypayListing").addEventListener("click", () => {
+  chrome.tabs.create({ url: LISTING_URLS.paypay });
 });
 $("btnOpenYahooListing").addEventListener("click", () => {
   chrome.tabs.create({ url: LISTING_URLS.yahoo });
@@ -2217,27 +2354,26 @@ async function renderSoldChecklist() {
   for (const item of SOLD_CHECKLIST) {
     const checked = !!saved[item.id];
     const row = document.createElement("label");
-    row.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;cursor:pointer;border-bottom:1px solid #eef2f8;";
+    row.className = "checklist-item";
 
     const cb = document.createElement("input");
     cb.type    = "checkbox";
     cb.checked = checked;
-    cb.style.cssText = "width:16px;height:16px;accent-color:#2563eb;flex-shrink:0;";
+
+    const span = document.createElement("span");
+    span.textContent = item.label;
+    if (checked) {
+      span.style.textDecoration = "line-through";
+      span.style.opacity = "0.55";
+    }
+
     cb.addEventListener("change", async () => {
       const d = await loadSoldCheck();
       d[item.id] = cb.checked;
       await saveSoldCheck(d);
+      span.style.textDecoration = cb.checked ? "line-through" : "";
+      span.style.opacity        = cb.checked ? "0.55" : "";
       updateSoldProgress();
-    });
-
-    const span = document.createElement("span");
-    span.textContent = item.label;
-    if (checked) span.style.cssText = "text-decoration:line-through;color:#94a3b8;";
-
-    cb.addEventListener("change", () => {
-      span.style.cssText = cb.checked
-        ? "text-decoration:line-through;color:#94a3b8;"
-        : "";
     });
 
     row.appendChild(cb);
@@ -2288,19 +2424,25 @@ async function init() {
   await renderSoldChecklist();
 
   // ── ライセンス・トライアルチェック ──
-  await initLicenseKanri();
+  const licState = await initLicenseKanri();
+
+  // ★修正: ライセンス認証済みならカウントダウンは一切動かさない
+  //   （以前はここが1秒ごとにバナーを上書きし、認証済みでも
+  //     「トライアル期間が終了しました」と表示されるバグの原因だった）
+  if (licState?.reason === "license") {
+    return;
+  }
 
   // ── トライアル残り時間カウントダウン ──
   (async function() {
     const banner = document.getElementById("trialBanner");
     if (!banner) return;
+    if (banner.dataset.trialMode !== "1") return;
 
-    // トライアル終了時刻を取得
     let endAt = 0;
     try {
       const st = await chrome.storage.local.get(["kanri_trial_end_at"]);
       if (st.kanri_trial_end_at) endAt = Number(st.kanri_trial_end_at);
-      // なければサーバーから取得
       if (!endAt) {
         const fp  = await getFingerprintKanri();
         const did = await getOrCreateDeviceIdKanri();
@@ -2313,12 +2455,14 @@ async function init() {
     } catch(e) {}
 
     function updateClock() {
+      // ★ 認証が通った瞬間に trialMode が "0" になり、上書きが止まる
       if (banner.dataset.trialMode !== "1") return;
+
       if (endAt > 0) {
         const diff = endAt - Date.now();
         if (diff <= 0) {
           banner.textContent = "⏰ トライアル期間が終了しました";
-          banner.style.background = "#fee2e2";
+          banner.style.background = "rgba(254,226,226,0.8)";
           banner.style.color = "#dc2626";
           return;
         }
