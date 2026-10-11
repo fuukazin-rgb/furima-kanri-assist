@@ -1631,24 +1631,53 @@
       .map((e) => ({ el: e, text: e.textContent.trim(), path: pathOf(e) }));
   }
 
-  function pickRakumaCategoryLeaf(leaves, mercariPath) {
+  // ★v1.5.4: 名前の語順・表記ゆれを吸収して比べる
+  //   「リュック/バックパック」と「バッグパック/リュック」を同じとみなす
+  const leafKey = (t) => String(t || "")
+    .replace(/バッグパック/g, "バックパック")
+    .replace(/（.*?）|\(.*?\)/g, "")
+    .split(/[\/／・･、]/)
+    .map((x) => x.replace(/\s/g, "").toLowerCase())
+    .filter(Boolean)
+    .sort()
+    .join("|");
+
+  // メルカリのカテゴリ（なければ商品名・説明文）から性別を決める
+  function detectGender(segs, hintText) {
+    if (segs.includes("メンズ")) return "メンズ";
+    if (segs.includes("レディース")) return "レディース";
+    const t = String(hintText || "");
+    const men = /メンズ|男性用|紳士/.test(t);
+    const women = /レディース|女性用|婦人/.test(t);
+    if (men && !women) return "メンズ";
+    if (women && !men) return "レディース";
+    return "";
+  }
+
+  function pickRakumaCategoryLeaf(leaves, mercariPath, hintText = "") {
     const segs = mercariPath.split(">").map((x) => x.trim()).filter(Boolean);
     if (!segs.length) return null;
     const ns = segs.map(normCat);
     const lastN = ns[ns.length - 1];
+    const lastK = leafKey(segs[segs.length - 1]);
     const prefixes = MERCARI_TO_RAKUMA_TOP[segs[0]] || [];
+    const gender = detectGender(segs, hintText);
+    const otherGender = gender === "メンズ" ? "レディース" : gender === "レディース" ? "メンズ" : "";
 
     const scored = leaves.map((l) => {
       const pt = l.path.map((x) => x.text);
+      // 性別が分かっているときは、反対側のカテゴリは選ばない
+      if (otherGender && pt[0] === otherGender) return { l, s: -1, prefer: 0 };
       const isOther = /その他/.test(l.text);
       let s = 0;
       let leafMatched = false;
-      if (normCat(l.text) === lastN) { s += 10; leafMatched = true; }
+      if (normCat(l.text) === lastN || leafKey(l.text) === lastK) { s += 10; leafMatched = true; }
       else if (!isOther && ns.includes(normCat(l.text))) { s += 4; leafMatched = true; }
       pt.forEach((x) => { if (ns.includes(normCat(x))) s += 3; });
       for (const pref of prefixes) {
         if (pref.every((x, i) => pt[i] === x)) { s += 3 * pref.length; break; }
       }
+      if (gender && pt[0] === gender) s += 5;
       // 末端が一致しないときは、同じ親の「その他」を優先する
       const prefer = leafMatched ? 2 : (isOther ? 1 : 0);
       return { l, s, prefer };
@@ -1659,7 +1688,7 @@
     return best.l;
   }
 
-  async function fillCategoryAuto(categoryPath) {
+  async function fillCategoryAuto(categoryPath, hintText = "") {
     if (!categoryPath) return { ok: false, reason: "メルカリのカテゴリデータなし" };
     let dialog = document.querySelector('[role="dialog"]');
     if (!dialog) {
@@ -1675,7 +1704,7 @@
     await sleep(300);
 
     const leaves = buildRakumaCategoryLeaves(dialog);
-    const best = pickRakumaCategoryLeaf(leaves, categoryPath);
+    const best = pickRakumaCategoryLeaf(leaves, categoryPath, hintText);
     if (!best) {
       // 合うものが無い → 画面を閉じて手動に任せる
       const close = [...dialog.querySelectorAll("button")].find((b) => /閉じる|キャンセル/.test(b.getAttribute("aria-label") || b.innerText || ""));
@@ -1742,7 +1771,7 @@
     let shipDaysRes = { ok: false, reason: "未実行" };
     try { shipDaysRes = await fillDeliveryDate(mercariData.shipDays); } catch (e) { shipDaysRes = { ok: false, reason: e.message || "例外" }; }
     let categoryRes = { ok: false, reason: "未実行" };
-    try { categoryRes = await fillCategoryAuto(categoryPath); } catch (e) { categoryRes = { ok: false, reason: e.message || "例外" }; }
+    try { categoryRes = await fillCategoryAuto(categoryPath, `${title} ${(mercariData.description || "").slice(0, 300)}`); } catch (e) { categoryRes = { ok: false, reason: e.message || "例外" }; }
     console.log("[FURIMA Rakuma] shipDays/category", shipDaysRes, categoryRes);
     const shipDaysOk = !!shipDaysRes.ok;
     const categoryOk = !!categoryRes.ok;
