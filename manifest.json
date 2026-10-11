@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "フリマ管理アシスト｜メルカリ→ラクマ・Yahoo!フリマ・ヤフオク",
   "short_name": "フリマ管理アシスト",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "description": "メルカリの商品ページから商品情報を取得し、ラクマ・Yahoo!フリマ・ヤフオクの出品フォーム入力を効率化。管理番号で一元管理し、二重販売を防ぎます。",
   "minimum_chrome_version": "116",
   "permissions": [
