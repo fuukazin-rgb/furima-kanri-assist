@@ -319,6 +319,11 @@
     .shipping-name  { font-weight: 600; }
     .shipping-size  { font-size: 11px; color: var(--subtext); }
     .shipping-price { font-weight: 800; color: var(--green); white-space: nowrap; font-size: 13px; }
+    .shipping-ng { opacity: 0.45; cursor: not-allowed; }
+    .shipping-ng .shipping-price { text-decoration: line-through; }
+    .shipping-ng-reason { font-size: 11px; color: #f87171; margin-top: 2px; }
+    .shipping-warn { font-size: 11px; color: #fbbf24; margin-top: 2px; }
+    .shipping-up { font-size: 11px; color: #93c5fd; margin-top: 2px; }
     @media (prefers-color-scheme: dark) { .shipping-price { color: #5eead4; } }
 
     .progress-bar {
@@ -548,6 +553,22 @@
   <!-- ⑥ 送料計算 -->
   <div class="card card-purple">
     <div class="badge badge-purple">📮 送料計算</div>
+    <div style="font-size:11px;color:var(--subtext);margin:2px 0 6px;">📦 箱に入れた（梱包後の）大きさ・重さを入れてください</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;">
+      <div>
+        <label>縦（cm）</label>
+        <input id="shipL" type="number" placeholder="例: 25" step="0.5" />
+      </div>
+      <div>
+        <label>横（cm）</label>
+        <input id="shipW" type="number" placeholder="例: 22" step="0.5" />
+      </div>
+      <div>
+        <label>高さ（cm）</label>
+        <input id="shipH" type="number" placeholder="例: 20" step="0.5" />
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--subtext);margin:4px 0 6px;">↑ 3つ入れると、3辺合計と厚さ（一番短い辺）が自動で入ります。合計が分かっていれば下に直接入れてもOK</div>
     <div class="grid">
       <div>
         <label>3辺合計（cm）</label>
@@ -555,7 +576,11 @@
       </div>
       <div>
         <label>重さ（kg）省略可</label>
-        <input id="shippingWeight" type="number" placeholder="例: 1.5" step="0.1" />
+        <input id="shippingWeight" type="number" placeholder="例: 0.9（900gなら0.9）" step="0.1" />
+      </div>
+      <div>
+        <label>厚さ（cm）省略可</label>
+        <input id="shippingThick" type="number" placeholder="例: 3" step="0.5" />
       </div>
     </div>
     <button id="btnCalcShipping" class="btn-purple mt8">📮 送料を調べる</button>

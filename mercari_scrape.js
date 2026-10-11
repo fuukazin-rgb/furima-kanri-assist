@@ -76,6 +76,13 @@
     if (m) category = m[1].trim();
   }
 
+  // ── ★v1.5.4: 発送までの日数（例: "1~2日で発送"）─────────────
+  let shipDays = "";
+  {
+    const m = bodyText.match(/発送までの日数\s*\n?\s*([1-9])\s*[~〜～-]\s*([1-9])\s*日/);
+    if (m) shipDays = `${m[1]}~${m[2]}日`;
+  }
+
   // ── サイズ ──────────────────────────────────────────────
   let size = "";
   const sizeEl = document.querySelector('[data-testid="サイズ"] p');
@@ -145,6 +152,34 @@
     if (images.length >= 20) break;
   }
 
+  // ── ★v1.5.4: 見積もりメモ（大きさ・重さ・仕入れ値など）を読む ──────────
+  //   出品を手伝うAI（Claude）などが、このページの localStorage に
+  //   「fx_hint_<商品ID>」として置いたメモを読み込む。無ければ何もしない。
+  //   例: {"cm":45,"kg":0.5,"thick":4,"cost":0,"ship":"宅急便コンパクト","invMemo":"付属品：外箱"}
+  //   thick … 梱包後の厚さ(cm)。入れると、ネコポスなど厚さ制限のある配送方法を正しく判定できる
+  //   ship … 配送方法の名前（管理アシストの送料表の名前と同じ）。指定があれば最安より優先する
+  let hint = null;
+  try {
+    const m = location.pathname.match(/\/item\/(m\d+)/);
+    if (m) {
+      const raw = localStorage.getItem(`fx_hint_${m[1]}`);
+      if (raw) {
+        const h = JSON.parse(raw);
+        if (h && typeof h === "object") {
+          const num = (v) => (v === "" || v == null || isNaN(Number(v)) ? null : Number(v));
+          hint = {
+            cm:      num(h.cm),
+            kg:      num(h.kg),
+            thick:   num(h.thick),
+            cost:    num(h.cost),
+            ship:    typeof h.ship === "string" ? h.ship.trim().slice(0, 40) : "",
+            invMemo: typeof h.invMemo === "string" ? h.invMemo.slice(0, 500) : ""
+          };
+        }
+      }
+    }
+  } catch (e) { hint = null; }
+
   // ── 結果を storage に保存 ──────────────────────────────────
   const result = {
     title,
@@ -155,8 +190,10 @@
     size,
     brand,
     images,
+    shipDays,
     sourceUrl: location.href,
-    savedAt:   new Date().toISOString()
+    savedAt:   new Date().toISOString(),
+    hint
   };
 
   await chrome.storage.local.set({ mercariData: result });

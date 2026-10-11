@@ -443,6 +443,87 @@
     "アップリカ", "Aprica", "コンビ", "Combi",
     "Pigeon", "ピジョン", "BABYBJORN", "ベビービョルン",
     "STOKKE", "ストッケ",
+    // === レディースアパレル（国内） ===
+    "アースミュージック&エコロジー", "earth music&ecology", "グローバルワーク", "GLOBAL WORK", "ニコアンド", "niko and",
+    "スナイデル", "snidel", "ジェラートピケ", "gelato pique", "マーキュリーデュオ", "MERCURYDUO",
+    "リエンダ", "rienda", "エモダ", "EMODA", "マウジー", "moussy",
+    "スライ", "SLY", "エイチアンドエム", "イエナ", "IENA", "スピックアンドスパン",
+    "Spick and Span", "トゥモローランド", "TOMORROWLAND", "フリークスストア", "FREAK'S STORE", "アズールバイマウジー",
+    "AZUL BY MOUSSY", "ハニーズ", "Honeys", "アンタイトル", "UNTITLED",
+    "インディヴィ", "INDIVI", "ナチュラルビューティーベーシック", "NATURAL BEAUTY BASIC", "プロポーションボディドレッシング", "PROPORTION BODY DRESSING",
+    "ミッシュマッシュ", "MISCH MASCH", "ジルスチュアート", "JILLSTUART", "ミナペルホネン", "mina perhonen",
+    "イッセイミヤケ", "ISSEY MIYAKE", "プリーツプリーズ", "PLEATS PLEASE", "コムデギャルソン", "COMME des GARCONS",
+    "ヨウジヤマモト", "Yohji Yamamoto", "サカイ", "sacai",
+    "マメクロゴウチ", "Mame Kurogouchi", "アニエスベー", "agnes b.",
+    // === バッグ・小物（追加） ===
+    "マスターピース", "master-piece", "Kitamura", "土屋鞄", "ツチヤカバン",
+    "イルビゾンテ", "IL BISONTE", "トリーバーチ", "TORY BURCH", "フルラ", "FURLA",
+    "ロンシャン", "LONGCHAMP", "レスポートサック", "LeSportsac", "キプリング", "Kipling",
+    "マリメッコ", "marimekko", "アフタヌーンティー", "Afternoon Tea", "ルートート", "ROOTOTE",
+    // === 靴（追加） ===
+    "リーガル", "REGAL", "ドクターマーチン", "Dr.Martens", "クラークス", "Clarks",
+    "ビルケンシュトック", "BIRKENSTOCK", "クロックス", "crocs", "ハッシュパピー", "Hush Puppies",
+    "ムーンスター", "MOONSTAR", "オリエンタルトラフィック", "ORiental TRaffic", "ダイアナ", "DIANA",
+    "卑弥呼", "HIMIKO", "オニツカタイガー", "Onitsuka Tiger", "ホカオネオネ",
+    // === キッチン・食器 ===
+    "ル・クルーゼ", "LE CREUSET", "ストウブ", "STAUB", "バーミキュラ", "VERMICULAR",
+    "ウェッジウッド", "WEDGWOOD", "ロイヤルコペンハーゲン", "Royal Copenhagen", "マイセン", "Meissen",
+    "ノリタケ", "Noritake", "ナルミ", "NARUMI", "ロイヤルアルバート", "Royal Albert",
+    "イッタラ", "iittala", "アラビア", "ARABIA", "野田琺瑯",
+    "月兎印", "ジョージジェンセン", "Georg Jensen", "ヘレンド", "HEREND", "リチャードジノリ",
+    "Richard Ginori", "たち吉", "ZWILLING",
+    "ツヴィリング", "ヘンケルス", "HENCKELS", "貝印", "サーモス",
+    "THERMOS", "スタンレー", "STANLEY", "ラバーメイド", "OXO", "ジョセフジョセフ",
+    "Joseph Joseph",
+    // === インテリア・雑貨 ===
+    "イケア", "IKEA", "ニトリ", "フランフラン", "Francfranc", "アクタス",
+    "ACTUS", "イデー", "IDEE", "カリモク", "karimoku", "マルニ木工",
+    "天童木工", "ルイスポールセン", "Louis Poulsen", "アルテック", "artek", "ハーマンミラー",
+    "Herman Miller", "カッシーナ", "Cassina", "ヴィトラ", "Vitra", "ダイソー",
+    "DAISO", "スリーコインズ", "3COINS", "ローラアシュレイ", "LAURA ASHLEY", "アフタヌーンティーリビング",
+    "ザラホーム", "ZARA HOME", "H&M HOME", "ジョーマローン", "Jo Malone", "ディプティック",
+    "diptyque", "ヤンキーキャンドル", "YANKEE CANDLE",
+    // === 手芸・クラフト・フラワー資材 ===
+    "松村工芸", "東京堂", "パレス化学", "大地農園", "マミーフラワーデザインスクール", "トーカイ",
+    "ハマナカ", "Hamanaka", "オリムパス", "Olympus製絲", "クロバー", "Clover",
+    "パジコ", "PADICO", "トーホー", "TOHO", "ミユキ", "MIYUKI",
+    "貴和製作所", "パーツクラブ", "Parts Club", "ユザワヤ", "Yuzawaya", "DMC",
+    "ルシアン", "LECIEN",
+    "ニッケ", "カワグチ", "KAWAGUCHI", "タカギ繊維",
+    "清原", "KIYOHARA", "オカダヤ",
+    "パーラービーズ", "Perler", "ナノブロック",
+    "nanoblock",
+    // === 文具・画材 ===
+    "パイロット", "PILOT", "ゼブラ", "ZEBRA", "三菱鉛筆",
+    "ぺんてる", "Pentel", "トンボ鉛筆", "Tombow", "サクラクレパス",
+    "コクヨ", "KOKUYO", "キングジム", "KING JIM", "ほぼ日", "モレスキン",
+    "MOLESKINE", "トラベラーズノート", "TRAVELER'S notebook", "ラミー",
+    "LAMY", "モンブラン", "MONTBLANC", "ペリカン", "Pelikan", "パーカー",
+    "PARKER", "セーラー", "SAILOR", "プラチナ万年筆", "PLATINUM", "ホルベイン",
+    "HOLBEIN", "ウィンザー&ニュートン", "Winsor&Newton", "コピック", "COPIC", "ステッドラー",
+    "STAEDTLER", "ファーバーカステル", "Faber-Castell",
+    // === 釣り ===
+    "ダイワ", "DAIWA", "がまかつ", "Gamakatsu", "メジャークラフト", "Major Craft",
+    "ジャッカル", "JACKALL", "メガバス", "Megabass",
+    "ヤマリア", "YAMARIA", "エバーグリーン", "EVERGREEN", "アブガルシア", "Abu Garcia",
+    "ラパラ", "Rapala", "サンライン", "SUNLINE", "バリバス", "VARIVAS",
+    "ハヤブサ", "Hayabusa", "第一精工",
+    // === ホビー・キャラクター（追加） ===
+    "グッドスマイルカンパニー", "GOOD SMILE COMPANY", "コトブキヤ", "KOTOBUKIYA", "メディコム・トイ", "MEDICOM TOY",
+    "海洋堂", "KAIYODO", "フリュー", "FuRyu", "タイトー", "TAITO",
+    "バンプレスト", "BANPRESTO", "メガハウス", "MegaHouse", "マックスファクトリー", "Max Factory",
+    "ジブリ", "スタジオジブリ", "レゴ", "LEGO",
+    "シルバニアファミリー", "トミカ", "プラレール", "リカちゃん", "メルちゃん", "アンパンマン",
+    "すみっコぐらし", "リラックマ",
+    // === ベビー・キッズ（追加） ===
+    "ミキハウス", "MIKI HOUSE", "ファミリア", "familiar", "エルゴベビー", "ERGOBABY",
+    "サイベックス", "cybex", "ボーネルンド", "BorneLund", "プチバトー", "PETIT BATEAU",
+    "ブランシェス", "BRANSHES", "エフオーキッズ", "F.O.KIDS", "西松屋", "ラグマート",
+    "Rag Mart", "ニシキベビー",
+    // === 美容・コスメ（追加） ===
+    "クレ・ド・ポー ボーテ", "エスケーツー", "ジルスチュアートビューティ", "ポール&ジョー", "PAUL & JOE", "COSME DECORTE",
+    "ルナソル", "LUNASOL", "キャンメイク", "CANMAKE", "セザンヌ", "CEZANNE",
+    "ヤーマン", "YA-MAN", "リファ", "ReFa", "パナソニックビューティ", "ReFa BEAUTECH",
   ];
 
   // ------------------------------------------------------------
@@ -1138,6 +1219,80 @@
     return null;
   }
 
+  // ★v1.5.4 ブランドの探し直し用
+  const RAKUMA_BRAND_ALIASES = {
+    "セイコータイムクリエーション": ["SEIKO", "セイコー"],
+    "セイコーウオッチ": ["SEIKO", "セイコー"],
+    "セイコー": ["SEIKO"],
+    "シチズン時計": ["CITIZEN", "シチズン"],
+    "シチズン": ["CITIZEN"],
+    "カシオ計算機": ["CASIO", "カシオ"],
+    "カシオ": ["CASIO"],
+    "ルイヴィトン": ["LOUIS VUITTON", "ルイ ヴィトン"],
+    "ルイ・ヴィトン": ["LOUIS VUITTON"],
+    "ナイキ": ["NIKE"], "アディダス": ["adidas"], "コーチ": ["COACH"], "シャネル": ["CHANEL"],
+    "グッチ": ["GUCCI"], "プラダ": ["PRADA"], "エルメス": ["HERMES"], "ロレックス": ["ROLEX"],
+    "オメガ": ["OMEGA"], "ソニー": ["SONY"], "キヤノン": ["Canon"], "ニコン": ["Nikon"]
+  };
+  const isLatinName = (t) => /^[\x20-\x7E]+$/.test(String(t || "").normalize("NFKC").trim());
+  const RAKUMA_BRAND_SUFFIX_RE = /(タイムクリエーション|ウオッチ|ウォッチ|ジャパン|JAPAN|株式会社|\(株\)|（株）|コーポレーション|工業|製作所)$/i;
+  const normBrandKey = (t) => String(t || "").normalize("NFKC").replace(/[\s・･'’.\-]/g, "").replace(/[（(].*?[)）]/g, "").toLowerCase();
+
+  function rakumaBrandQueries(brand) {
+    // ★英語表記を優先: 言い換えの英語名 → メルカリのブランド名 → そのほか
+    const aliases = RAKUMA_BRAND_ALIASES[brand] || [];
+    const qs = [...aliases.filter(isLatinName), brand, ...aliases.filter((a) => !isLatinName(a))];
+    const stripped = brand.replace(RAKUMA_BRAND_SUFFIX_RE, "").trim();
+    if (stripped && stripped !== brand) qs.push(stripped);
+    const firstWord = brand.split(/[\s　・]/)[0];
+    if (firstWord && firstWord.length >= 3) qs.push(firstWord);
+    if (brand.length > 6) qs.push(brand.slice(0, 4));
+    return qs.filter((v, i, a) => v && a.indexOf(v) === i);
+  }
+
+  // モーダルの候補から選ぶ: ① ブランド名（言い換え含む）と完全一致 ② 候補名がブランド名の先頭と一致（一番長いもの）
+  async function pickBrandCandidate(container, exactNames, nb, timeout = 2500) {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      const items = [...container.querySelectorAll("li, [role='option'], [role='button'], button, a, div")]
+        .filter(isVisible)
+        .filter((el) => el.children.length <= 6)
+        .filter((el) => {
+          const r = el.getBoundingClientRect();
+          return r.height >= 24 && r.height <= 120 && r.width >= 100;
+        })
+        .map((el) => ({ el, lines: (el.innerText || "").split("\n").map(normBrandKey).filter(Boolean) }))
+        .filter((x) => x.lines.length && x.lines.join("").length <= 60);
+
+      // 完全一致が複数あるときは、英語表記の候補を優先
+      const exactHits = items.filter((x) => x.lines.some((l) => exactNames.includes(l)));
+      let hit = exactHits.find((x) => /^[a-z0-9 &+.'-]+$/.test(x.lines[0])) || exactHits[0];
+      if (!hit) {
+        const pref = items
+          .map((x) => ({ x, len: Math.max(0, ...x.lines.filter((l) => l.length >= 3 && nb.startsWith(l)).map((l) => l.length)) }))
+          .filter((p) => p.len > 0)
+          .sort((a, b) => b.len - a.len);
+        if (pref.length) hit = pref[0].x;
+      }
+      if (hit) {
+        // ★押せるボタンを優先する: 行の枠（role=listitem など）の中にボタンがある作りなので、中のボタンを押す
+        if (hit.el.matches("button, [role='button'], [role='option'], a")) return hit.el;
+        const inner = hit.el.querySelector("button, [role='button'], [role='option'], a");
+        if (inner && isVisible(inner)) return inner;
+        let target = hit.el.parentElement;
+        for (let i = 0; i < 6 && target; i++) {
+          const tag = target.tagName.toLowerCase();
+          const role = target.getAttribute("role") || "";
+          if (tag === "li" || tag === "button" || tag === "a" || role === "option" || role === "button") return target;
+          target = target.parentElement;
+        }
+        return hit.el;
+      }
+      await sleep(200);
+    }
+    return null;
+  }
+
   async function fillBrand(brandName) {
     const safeBrand = sanitizeBrandName(brandName);
     if (!safeBrand) {
@@ -1171,27 +1326,39 @@
       return false;
     }
 
-    modal.searchInput.focus();
-    setNativeValue(modal.searchInput, "");
-    await sleep(150);
-    setNativeValue(modal.searchInput, safeBrand);
-    await sleep(2000);
-
-    const candidate = await findModalCandidate(modal.container, safeBrand, 3000);
+    // ★v1.5.4: メルカリのブランド名で見つからないときは、言い換え・会社名を外した名前などで探し直す
+    //   例: セイコータイムクリエーション → セイコー / SEIKO
+    const exactNames = [safeBrand, ...(RAKUMA_BRAND_ALIASES[safeBrand] || [])].map(normBrandKey);
+    const nb = normBrandKey(safeBrand);
+    let candidate = null;
+    for (const q of rakumaBrandQueries(safeBrand)) {
+      modal.searchInput.focus();
+      setNativeValue(modal.searchInput, "");
+      await sleep(150);
+      setNativeValue(modal.searchInput, q);
+      await sleep(1500);
+      candidate = await pickBrandCandidate(modal.container, exactNames, nb, 2500);
+      if (candidate) {
+        console.log(`[FURIMA Rakuma] brand candidate found with query: ${q}`);
+        break;
+      }
+    }
     if (!candidate) {
       console.log(`[FURIMA Rakuma] no brand candidate for: ${safeBrand}`);
+      setNativeValue(modal.searchInput, "");
       return false;
     }
 
     strongClick(candidate);
     await sleep(1200);
 
+    // まだ画面が開いているときだけ、候補を取り直してもう一度押す
     const stillOpen = findOpenBrandModal();
     if (stillOpen) {
-      strongClick(candidate);
-      await sleep(800);
+      const again = await pickBrandCandidate(stillOpen.container || modal.container, exactNames, nb, 1500);
+      if (again) { strongClick(again); await sleep(900); }
     }
-    return true;
+    return !findOpenBrandModal();
   }
 
   // ------------------------------------------------------------
@@ -1369,6 +1536,170 @@
   }
 
   // ------------------------------------------------------------
+  // ★v1.5.4 発送までの日数（メルカリの設定を引き継ぐ）
+  //   ラクマ deliveryDate: 1=支払い後1～2日 / 2=2～3日 / 3=4～7日
+  // ------------------------------------------------------------
+  async function fillDeliveryDate(shipDays) {
+    const days = String(shipDays || "").replace(/[〜～-]/g, "~").replace(/\s+/g, "");
+    if (!days) return { ok: false, reason: "メルカリの発送日数データなし" };
+    const map = { "1~2日": "1", "2~3日": "2", "4~7日": "3", "3~7日": "3" };
+    const want = map[days];
+    if (!want) return { ok: false, reason: `対応していない日数（${days}）` };
+    const sel = document.querySelector('select[name="deliveryDate"]');
+    if (!sel) return { ok: false, reason: "発送日の目安の欄が見つからない" };
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+    if (setter) setter.call(sel, want); else sel.value = want;
+    sel.dispatchEvent(new Event("input",  { bubbles: true }));
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+    await sleep(150);
+    return sel.value === want
+      ? { ok: true, value: sel.options[sel.selectedIndex]?.text || days }
+      : { ok: false, reason: "反映されなかった" };
+  }
+
+  // ------------------------------------------------------------
+  // ★v1.5.4 カテゴリ自動選択
+  //   ラクマのカテゴリ画面は全階層がページ内にあるので、メルカリのカテゴリと
+  //   一番近い「末端の項目」を全体から探して選ぶ。
+  //   ・末端の名前が一致 → それを選ぶ
+  //   ・末端は無いが親が一致 → その親の「その他」を選ぶ
+  //   ・どれも弱い → 選ばない（手動）
+  // ------------------------------------------------------------
+  const MERCARI_TO_RAKUMA_TOP = {
+    "ファッション":                 [["レディース"], ["メンズ"]],
+    "ベビー・キッズ":               [["キッズ/ベビー/マタニティ"]],
+    "ゲーム・おもちゃ・グッズ":     [["エンタメ/ホビー"]],
+    "ホビー・楽器・アート":         [["エンタメ/ホビー"], ["楽器"]],
+    "チケット":                     [["チケット"]],
+    "本・雑誌・漫画":               [["エンタメ/ホビー"]],
+    "CD・DVD・ブルーレイ":          [["エンタメ/ホビー"]],
+    "スマホ・タブレット・パソコン": [["スマホ/家電/カメラ"]],
+    "テレビ・オーディオ・カメラ":   [["スマホ/家電/カメラ"]],
+    "生活家電・空調":               [["スマホ/家電/カメラ"]],
+    "スポーツ":                     [["スポーツ/アウトドア"]],
+    "アウトドア・釣り・旅行用品":   [["スポーツ/アウトドア"]],
+    "コスメ・美容":                 [["コスメ/美容"]],
+    "ダイエット・健康":             [["コスメ/美容"]],
+    "食品・飲料・酒":               [["食品/飲料/酒"]],
+    "キッチン・日用品・その他":     [["インテリア/住まい/日用品"]],
+    "家具・インテリア":             [["インテリア/住まい/日用品"]],
+    "DIY・工具":                    [["インテリア/住まい/日用品"]],
+    "フラワー・ガーデニング":       [["ハンドメイド", "フラワー/ガーデン"]],
+    "ハンドメイド・手芸":           [["ハンドメイド"]],
+    "車・バイク・自転車":           [["自動車/バイク"], ["スポーツ/アウトドア"]]
+  };
+
+  const normCat = (t) => String(t || "").replace(/[・･、／/\s]/g, "").replace(/（.*?）|\(.*?\)/g, "").toLowerCase();
+
+  function findCategoryOpenerButton() {
+    const label = [...document.querySelectorAll("label, div, span, p")]
+      .find((el) => normalizeText(el.textContent || "") === "カテゴリ");
+    if (!label) return null;
+    let p = label.parentElement;
+    for (let i = 0; i < 4 && p; i++) {
+      const b = [...p.querySelectorAll("button")].find((x) => isVisible(x));
+      if (b) return b;
+      p = p.parentElement;
+    }
+    return null;
+  }
+
+  function buildRakumaCategoryLeaves(dialog) {
+    const headerOf = (region) => {
+      const id = region.id;
+      let b = id ? dialog.querySelector(`[aria-controls="${CSS.escape(id)}"]`) : null;
+      if (!b) {
+        const prev = region.previousElementSibling;
+        b = prev && (prev.matches("button") ? prev : prev.querySelector("button"));
+      }
+      return b || null;
+    };
+    const pathOf = (el) => {
+      const path = [];
+      let e = el;
+      while (e && e !== dialog) {
+        if (e.getAttribute && e.getAttribute("role") === "region") {
+          const b = headerOf(e);
+          path.unshift({ text: b ? b.innerText.trim() : "", btn: b });
+        }
+        e = e.parentElement;
+      }
+      return path;
+    };
+    return [...dialog.querySelectorAll('[role="region"] *')]
+      .filter((e) => e.children.length === 0 && (e.textContent || "").trim() && !e.closest("button"))
+      .map((e) => ({ el: e, text: e.textContent.trim(), path: pathOf(e) }));
+  }
+
+  function pickRakumaCategoryLeaf(leaves, mercariPath) {
+    const segs = mercariPath.split(">").map((x) => x.trim()).filter(Boolean);
+    if (!segs.length) return null;
+    const ns = segs.map(normCat);
+    const lastN = ns[ns.length - 1];
+    const prefixes = MERCARI_TO_RAKUMA_TOP[segs[0]] || [];
+
+    const scored = leaves.map((l) => {
+      const pt = l.path.map((x) => x.text);
+      const isOther = /その他/.test(l.text);
+      let s = 0;
+      let leafMatched = false;
+      if (normCat(l.text) === lastN) { s += 10; leafMatched = true; }
+      else if (!isOther && ns.includes(normCat(l.text))) { s += 4; leafMatched = true; }
+      pt.forEach((x) => { if (ns.includes(normCat(x))) s += 3; });
+      for (const pref of prefixes) {
+        if (pref.every((x, i) => pt[i] === x)) { s += 3 * pref.length; break; }
+      }
+      // 末端が一致しないときは、同じ親の「その他」を優先する
+      const prefer = leafMatched ? 2 : (isOther ? 1 : 0);
+      return { l, s, prefer };
+    }).sort((a, b) => (b.s - a.s) || (b.prefer - a.prefer));
+
+    const best = scored[0];
+    if (!best || best.s < 6) return null;   // 根拠が弱いときは選ばない
+    return best.l;
+  }
+
+  async function fillCategoryAuto(categoryPath) {
+    if (!categoryPath) return { ok: false, reason: "メルカリのカテゴリデータなし" };
+    let dialog = document.querySelector('[role="dialog"]');
+    if (!dialog) {
+      const opener = findCategoryOpenerButton();
+      if (!opener) return { ok: false, reason: "カテゴリ欄が見つからない" };
+      strongClick(opener);
+      for (let i = 0; i < 20 && !dialog; i++) {
+        await sleep(150);
+        dialog = document.querySelector('[role="dialog"]');
+      }
+      if (!dialog) return { ok: false, reason: "カテゴリ画面が開かない" };
+    }
+    await sleep(300);
+
+    const leaves = buildRakumaCategoryLeaves(dialog);
+    const best = pickRakumaCategoryLeaf(leaves, categoryPath);
+    if (!best) {
+      // 合うものが無い → 画面を閉じて手動に任せる
+      const close = [...dialog.querySelectorAll("button")].find((b) => /閉じる|キャンセル/.test(b.getAttribute("aria-label") || b.innerText || ""));
+      if (close) close.click();
+      return { ok: false, reason: "合うカテゴリが見つからない" };
+    }
+
+    for (const h of best.path) {
+      if (h.btn && h.btn.getAttribute("aria-expanded") !== "true") {
+        h.btn.click();
+        await sleep(350);
+      }
+    }
+    best.el.scrollIntoView({ block: "center" });
+    best.el.click();
+    await sleep(700);
+
+    const want = [...best.path.map((x) => x.text), best.text].join(" > ");
+    const shown = [...document.querySelectorAll("button")].map((b) => b.innerText.trim()).find((t) => / > /.test(t)) || "";
+    if (normCat(shown) === normCat(want)) return { ok: true, value: want };
+    return { ok: false, reason: `「${want}」を選びましたが反映を確認できません` };
+  }
+
+  // ------------------------------------------------------------
   // メイン処理
   // ------------------------------------------------------------
   try {
@@ -1407,6 +1738,15 @@
     const descOk = await fillDescription(description);
     const conditionOk = await fillCondition(condition);
 
+    // ★v1.5.4: 発送日数・カテゴリ
+    let shipDaysRes = { ok: false, reason: "未実行" };
+    try { shipDaysRes = await fillDeliveryDate(mercariData.shipDays); } catch (e) { shipDaysRes = { ok: false, reason: e.message || "例外" }; }
+    let categoryRes = { ok: false, reason: "未実行" };
+    try { categoryRes = await fillCategoryAuto(categoryPath); } catch (e) { categoryRes = { ok: false, reason: e.message || "例外" }; }
+    console.log("[FURIMA Rakuma] shipDays/category", shipDaysRes, categoryRes);
+    const shipDaysOk = !!shipDaysRes.ok;
+    const categoryOk = !!categoryRes.ok;
+
     let brandOk = false;
     let autoBrandFailed = false;
     let brandCandidates = [];
@@ -1428,13 +1768,23 @@
     const currentCategory = getCurrentCategoryText();
     const categoryCandidates = inferCategoryCandidates(title, categoryPath);
 
-    showHelperPanel({
-      categoryCandidates,
-      currentCategory,
-      condition,
-      brandCandidates,
-      autoBrandFailed
-    });
+    // ★v1.5.4: 入力補助パネルは「自動で入らなかった項目があるときだけ」出す
+    //   ・カテゴリを自動で選べなかった → カテゴリの参考を表示
+    //   ・メルカリにブランドがあるのに自動入力できなかった → ブランド候補を表示
+    //   ・メルカリにブランドが無い商品では、商品名から推測した候補（ブランドではない言葉が混ざる）は出さない
+    const needCategory = !categoryOk;
+    const needBrand    = !!brand && !brandOk;
+    if (needCategory || needBrand) {
+      showHelperPanel({
+        categoryCandidates: needCategory ? categoryCandidates : [],
+        currentCategory,
+        condition,
+        brandCandidates: needBrand ? brandCandidates : [],
+        autoBrandFailed
+      });
+    } else {
+      removeHelperPanel();
+    }
 
     const results = [];
     if (imageOk) results.push("画像");
@@ -1443,6 +1793,8 @@
     if (descOk) results.push("説明文");
     if (conditionOk) results.push("商品状態");
     if (brandOk) results.push("ブランド");
+    if (categoryOk) results.push("カテゴリ");
+    if (shipDaysOk) results.push("発送日数");
 
     if (results.length) {
       toast(`${results.join("・")} を入力しました`);
@@ -1452,7 +1804,11 @@
 
     // ★ 管理アシスト固有：実行結果パネル用にステータスを保存（必須）
     await chrome.storage.local.set({
-      rakumaFillResult: JSON.stringify({ imageOk, titleOk, priceOk, descOk, conditionOk, brandOk })
+      rakumaFillResult: JSON.stringify({
+        imageOk, titleOk, priceOk, descOk, conditionOk, brandOk,
+        categoryOk, categoryText: categoryRes.value || "", categoryReason: categoryRes.reason || "",
+        shipDaysOk, shipDaysText: shipDaysRes.value || "", shipDaysReason: shipDaysRes.reason || ""
+      })
     });
 
     console.log("[FURIMA Rakuma] result", {

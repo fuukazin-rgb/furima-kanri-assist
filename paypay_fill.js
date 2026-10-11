@@ -756,20 +756,65 @@
     return { key: "price", ok: true, value: clamped };
   }
 
+  // ★v1.5.4: ハッシュタグを複数（最大5個）入れる
+  //   優先順: ① 説明文の末尾などに書かれた「#〇〇」 ② ブランド・商品名・カテゴリから作った候補
+  const HASHTAG_MAX = 5;
+
+  function extractHashtagsFromDescription(desc) {
+    const out = [];
+    const re = /[#＃]([^\s#＃、。,，!！?？「」()（）\[\]【】]{2,20})/g;
+    let m;
+    while ((m = re.exec(String(desc || ""))) !== null) out.push(m[1]);
+    return out;
+  }
+
+  // すでにチップになっているハッシュタグ（#なしの文字）を集める
+  function getExistingHashtagChips() {
+    const input = findHashtagInput();
+    let box = input;
+    for (let i = 0; i < 4 && box && box.parentElement; i++) box = box.parentElement;
+    const scope = box || document;
+    return [...scope.querySelectorAll("*")]
+      .filter((e) => e.children.length === 0 && /^[#＃]/.test((e.textContent || "").trim()))
+      .map((e) => (e.textContent || "").trim().replace(/^[#＃]/, ""));
+  }
+
   async function fillHashtag(data) {
     const el = findHashtagInput();
     if (!el) return { key: "hashtag", ok: false, reason: "要素が見つからない" };
-    const tag = buildHashtagFromData(data);
-    if (!tag) return { key: "hashtag", ok: false, reason: "ハッシュタグ生成不可" };
 
-    el.focus();
-    setReactInputValue(el, tag);
-    await sleep(400);
-    fireEnterKey(el);
-    await sleep(150);
-    el.blur();
+    const wanted = [];
+    const seen = new Set();
+    const push = (t) => {
+      const v = String(t || "").trim().replace(/^[#＃]/, "").slice(0, 20);
+      if (v.length < 2 || seen.has(v)) return;
+      if (isSkipWord(v) || isLikelyMercariUiLabel(v)) return;
+      seen.add(v);
+      wanted.push(v);
+    };
+    extractHashtagsFromDescription(data.description).forEach(push);
+    buildHashtagCandidates(data, HASHTAG_MAX + 3).forEach(push);
+    if (!wanted.length) {
+      const one = buildHashtagFromData(data);
+      if (one) push(one);
+    }
+    if (!wanted.length) return { key: "hashtag", ok: false, reason: "ハッシュタグ生成不可" };
 
-    return { key: "hashtag", ok: true, value: tag + "（チップ化はユーザー側で確認）" };
+    const existing = new Set(getExistingHashtagChips());
+    const added = [];
+    for (const tag of wanted) {
+      if (existing.size + added.length >= HASHTAG_MAX) break;
+      if (existing.has(tag)) continue;
+      const ok = await addOneHashtag(tag);
+      if (ok) added.push(tag);
+    }
+    try { findHashtagInput()?.blur(); } catch (e) {}
+    await sleep(200);
+
+    const chips = getExistingHashtagChips();
+    const total = chips.length;
+    if (!total) return { key: "hashtag", ok: false, reason: "チップにならなかった（入力欄を1回クリックしてください）" };
+    return { key: "hashtag", ok: true, value: chips.map((c) => "#" + c).join(" ") };
   }
 
   async function fillShipping(data) {
@@ -950,6 +995,396 @@
     const mapped = MERCARI_TO_YAHOO_FURIMA_CONDITION[mercariCondition];
     if (mapped) return mapped;
     return "目立った傷や汚れなし";
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // ★v1.5.4 ブランド自動選択
+  //   ブランド欄はカテゴリを選んだあとに出る入力欄（候補リスト付き）。
+  //   メルカリのブランド名を入力 → 候補の中から名前（英字・カナ）が一致するものを選ぶ。
+  //   一致する候補が無いときは入力を消して手動に任せる。
+  // ═══════════════════════════════════════════════════════════════
+  const normBrand = (t) => String(t || "")
+    .normalize("NFKC")
+    .replace(/[\s・･'’.\-]/g, "")
+    .toLowerCase();
+
+  function findYahooBrandInput() {
+    return document.querySelector('input[placeholder*="ブランドを入力"]');
+  }
+
+  // メルカリのブランド名が会社名・長い表記のとき用の言い換え
+  const BRAND_ALIASES = {
+    "セイコータイムクリエーション": ["SEIKO", "セイコー"],
+    "セイコーウオッチ": ["SEIKO", "セイコー"],
+    "セイコー": ["SEIKO"],
+    "シチズン時計": ["CITIZEN", "シチズン"],
+    "シチズン": ["CITIZEN"],
+    "カシオ計算機": ["CASIO", "カシオ"],
+    "カシオ": ["CASIO"],
+    "ルイヴィトン": ["LOUIS VUITTON", "ルイ・ヴィトン"],
+    "ルイ・ヴィトン": ["LOUIS VUITTON"],
+    "ナイキ": ["NIKE"], "アディダス": ["adidas"], "コーチ": ["COACH"], "シャネル": ["CHANEL"],
+    "グッチ": ["GUCCI"], "プラダ": ["PRADA"], "エルメス": ["HERMES"], "ロレックス": ["ROLEX"],
+    "オメガ": ["OMEGA"], "ソニー": ["SONY"], "キヤノン": ["Canon"], "ニコン": ["Nikon"]
+  };
+  const BRAND_SUFFIX_RE = /(タイムクリエーション|ウオッチ|ウォッチ|ジャパン|JAPAN|株式会社|\(株\)|（株）|コーポレーション|工業|製作所)$/i;
+
+  const isLatinName = (t) => /^[\x20-\x7E]+$/.test(String(t || "").normalize("NFKC").trim());
+
+  function brandQueries(brand) {
+    // ★英語表記を優先: 言い換えの英語名 → メルカリのブランド名 → そのほか
+    const aliases = BRAND_ALIASES[brand] || [];
+    const qs = [...aliases.filter(isLatinName), brand, ...aliases.filter((a) => !isLatinName(a))];
+    const stripped = brand.replace(BRAND_SUFFIX_RE, "").trim();
+    if (stripped && stripped !== brand) qs.push(stripped);
+    const firstWord = brand.split(/[\s　・]/)[0];
+    if (firstWord && firstWord.length >= 3) qs.push(firstWord);
+    if (brand.length > 6) qs.push(brand.slice(0, 4));   // 長い名前は先頭だけでも探す（下で「前方一致」チェックをする）
+    return qs.filter((v, i, a) => v && a.indexOf(v) === i);
+  }
+
+  const brandOptionEls = () => [...document.querySelectorAll('[role="listbox"] li[role="option"]')];
+  const brandOptionsKey = () => brandOptionEls().map((li) => li.innerText).join("|");
+
+  // 候補リストが出て、内容が落ち着く（0.5秒変わらない）まで待つ
+  async function waitStableBrandOptions(timeout = 3500) {
+    const start = Date.now();
+    let last = "", since = Date.now();
+    while (Date.now() - start < timeout) {
+      const key = brandOptionsKey();
+      if (key !== last) { last = key; since = Date.now(); }
+      else if (key && Date.now() - since >= 500) return brandOptionEls();
+      await sleep(100);
+    }
+    const list = brandOptionEls();
+    return list.length ? list : null;
+  }
+
+  async function typeBrandAndGetOptions(input, text) {
+    input.focus();
+    try { input.select(); document.execCommand("delete"); } catch (e) {}
+    await sleep(250);
+    let typed = false;
+    try { typed = document.execCommand("insertText", false, text); } catch (e) {}
+    if (!typed) setReactInputValue(input, text);
+    return await waitStableBrandOptions();
+  }
+
+  // 候補の名前を行ごとに取り出す（例: ["SEIKO", "セイコー"]）
+  //   innerText に改行が入らない場合もあるので、子要素ごとに読む
+  function brandOptionNames(li) {
+    const kids = [...li.querySelectorAll("p, span, div")]
+      .filter((e) => e.children.length === 0)
+      .map((e) => (e.textContent || "").trim())
+      .filter(Boolean);
+    const names = kids.length ? kids : (li.innerText || "").split("\n").map((x) => x.trim()).filter(Boolean);
+    return [...new Set(names)];
+  }
+
+  // 候補を確定できたか（入力欄が消えて選択済み表示になる／入力欄に候補の名前のどれかが残る）
+  async function isBrandCommitted(names) {
+    const keys = names.map(normBrand);
+    await sleep(500);
+    const el = findYahooBrandInput();
+    if (!el) return true;
+    try { el.blur(); } catch (e) {}
+    await sleep(600);   // 確定していない入力は、フォーカスが外れると消される
+    const after = findYahooBrandInput();
+    if (!after) return true;
+    const v = normBrand(after.value);
+    return v !== "" && keys.includes(v);
+  }
+
+  function clickBrandOption(li) {
+    const r = li.getBoundingClientRect();
+    const ev = { bubbles: true, cancelable: true, view: window, clientX: r.left + 5, clientY: r.top + 5, button: 0 };
+    li.dispatchEvent(new MouseEvent("mousedown", ev));
+    li.dispatchEvent(new MouseEvent("mouseup", ev));
+    li.dispatchEvent(new MouseEvent("click", ev));
+  }
+
+  async function fillBrandYahoo(data) {
+    const brand = sanitizeBrand(data.brand);
+    if (!brand) return { key: "brand", ok: false, skipped: true, reason: "メルカリにブランドなし" };
+
+    const input0 = await waitForElement(() => findYahooBrandInput(), 3000, 150);
+    if (!input0) return { key: "brand", ok: false, reason: "ブランド欄が見つからない（カテゴリ未選択の可能性）" };
+    input0.scrollIntoView({ block: "center" });
+
+    const nb = normBrand(brand);
+    const exactNames = [brand, ...(BRAND_ALIASES[brand] || [])].map(normBrand);
+    const linesOf = (li) => brandOptionNames(li).map((x) => normBrand(x.replace(/[（(].*?[)）]/g, ""))).filter(Boolean);
+    const pickIndex = (options) => {
+      // 完全一致する候補が複数あるときは、英語表記の候補を優先（例: 「SEIKO」と「セイコー」が別々にある場合）
+      const exact = options.map((li, i) => ({ li, i })).filter((x) => linesOf(x.li).some((l) => exactNames.includes(l)));
+      if (exact.length) {
+        const latin = exact.find((x) => isLatinName(brandOptionNames(x.li)[0]));
+        return (latin || exact[0]).i;
+      }
+      let idx = -1;
+      const pref = options
+        .map((li, i) => ({ i, len: Math.max(0, ...linesOf(li).filter((x) => x.length >= 3 && nb.startsWith(x)).map((x) => x.length)) }))
+        .filter((x) => x.len > 0)
+        .sort((x, y) => y.len - x.len);
+      return pref.length ? pref[0].i : -1;
+    };
+
+    for (const q of brandQueries(brand)) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const input = findYahooBrandInput();
+        if (!input) return { key: "brand", ok: true, value: "（選択済み）" };
+        const options = await typeBrandAndGetOptions(input, q);
+        if (!options) break;                       // この名前では候補が出ない → 次の名前へ
+        const idx = pickIndex(options);
+        if (idx < 0) break;
+        // 描き直しで古い要素をクリックしないよう、クリック直前に取り直す
+        const fresh = brandOptionEls()[idx] || options[idx];
+        const names = brandOptionNames(fresh);
+        const chosen = names[0] || "";
+        clickBrandOption(fresh);
+        if (await isBrandCommitted(names)) return { key: "brand", ok: true, value: chosen };
+
+        // クリックで確定しなかったとき: キーボード（↓ と Enter）で選ぶ
+        const input2 = findYahooBrandInput();
+        if (input2) {
+          const opts2 = await typeBrandAndGetOptions(input2, q);
+          const idx2 = opts2 ? pickIndex(opts2) : -1;
+          if (idx2 >= 0) {
+            for (let k = 0; k <= idx2; k++) {
+              input2.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", code: "ArrowDown", keyCode: 40, which: 40, bubbles: true }));
+              await sleep(60);
+            }
+            input2.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true }));
+            const names2 = brandOptionNames(opts2[idx2]);
+            if (await isBrandCommitted(names2)) return { key: "brand", ok: true, value: names2[0] || "" };
+          }
+        }
+      }
+    }
+
+    // 後始末: 何かのブランドが確定して残っているなら消さない（誤って正しい入力を消さないため）
+    const left = findYahooBrandInput();
+    if (!left) return { key: "brand", ok: true, value: "（選択済み）" };
+    if (normBrand(left.value)) {
+      return { key: "brand", ok: false, reason: `「${left.value}」が入っています。正しく確定しているか確認してください` };
+    }
+    return { key: "brand", ok: false, reason: `「${brand}」の候補を確定できませんでした` };
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // ★v1.5.4 発送までの日数（メルカリの設定を引き継ぐ）
+  //   メルカリ「1~2日」「2~3日」「4~7日」→ Yahoo!フリマ「1~2日」「2~3日」「3~7日」
+  // ═══════════════════════════════════════════════════════════════
+  async function fillTimeToShip(data) {
+    const days = String(data.shipDays || "").replace(/[〜～-]/g, "~").replace(/\s+/g, "");
+    if (!days) return { key: "shipDays", ok: false, reason: "メルカリの発送日数データなし" };
+    const map = { "1~2日": "ONE_TO_TWO_DAYS", "2~3日": "TWO_TO_THREE_DAYS", "4~7日": "THREE_TO_SEVEN_DAYS", "3~7日": "THREE_TO_SEVEN_DAYS" };
+    const want = map[days];
+    if (!want) return { key: "shipDays", ok: false, reason: `対応していない日数（${days}）` };
+
+    const sel = document.querySelector('select[name="timeToShip"]');
+    if (!sel) return { key: "shipDays", ok: false, reason: "発送までの日数欄が見つからない" };
+    const opt = [...sel.options].find((o) => o.value === want)
+             || [...sel.options].find((o) => o.textContent.replace(/[〜～]/g, "~").trim() === days.replace("4~7", "3~7"));
+    if (!opt) return { key: "shipDays", ok: false, reason: "選択肢が見つからない" };
+
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+    if (setter) setter.call(sel, opt.value); else sel.value = opt.value;
+    sel.dispatchEvent(new Event("input",  { bubbles: true }));
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+    await sleep(100);
+    return { key: "shipDays", ok: sel.value === opt.value, value: opt.textContent.trim(), reason: "反映されなかった" };
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // ★v1.5.4 カテゴリ自動選択
+  //   メルカリのカテゴリ（例: フラワー・ガーデニング > アレンジメント用品・資材 > ワイヤー）を
+  //   Yahoo!フリマのカテゴリ画面で1段ずつ探して選ぶ。合う項目が無い段で止める（そこからは手動）。
+  // ═══════════════════════════════════════════════════════════════
+  const MERCARI_TO_YAHOO_TOP = {
+    "ファッション":                 ["ファッション"],
+    "ベビー・キッズ":               ["ベビー、キッズ、マタニティ"],
+    "ゲーム・おもちゃ・グッズ":     ["ゲーム、おもちゃ"],
+    "ホビー・楽器・アート":         ["楽器、手芸、コレクション"],
+    "本・雑誌・漫画":               ["本、雑誌、コミック"],
+    "CD・DVD・ブルーレイ":          ["CD、レコード、音楽ソフト、チケット", "DVD、映像ソフト"],
+    "スマホ・タブレット・パソコン": ["スマホ、タブレット、パソコン"],
+    "テレビ・オーディオ・カメラ":   ["テレビ、オーディオ、カメラ"],
+    "生活家電・空調":               ["家電"],
+    "スポーツ":                     ["スポーツ"],
+    "アウトドア・釣り・旅行用品":   ["アウトドア、釣り、旅行用品"],
+    "コスメ・美容":                 ["コスメ、美容、ヘアケア"],
+    "ダイエット・健康":             ["ダイエット、健康"],
+    "食品・飲料・酒":               ["食品"],
+    "キッチン・日用品・その他":     ["キッチン、日用品、文具"],
+    "家具・インテリア":             ["家具、インテリア"],
+    "ペット用品":                   ["ペット用品、生き物"],
+    "DIY・工具":                    ["DIY、工具"],
+    "フラワー・ガーデニング":       ["花、ガーデニング"],
+    "ハンドメイド・手芸":           ["楽器、手芸、コレクション"],
+    "車・バイク・自転車":           ["車、バイク、自転車"]
+  };
+
+  const normCat = (t) => String(t || "")
+    .replace(/[・･／/]/g, "、")
+    .replace(/\s+/g, "")
+    .replace(/（.*?）|\(.*?\)/g, "")
+    .toLowerCase();
+
+  function isVisible(el) {
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  }
+
+  function findCategoryTrigger() {
+    const labels = [...document.querySelectorAll("div, span, label, p, h2, h3")]
+      .filter((el) => (el.textContent || "").trim() === "カテゴリ" && el.children.length <= 2);
+    for (const label of labels) {
+      let parent = label.parentElement;
+      for (let i = 0; i < 5 && parent; i++) {
+        const c = [...parent.querySelectorAll("div, button, [role='button'], input")]
+          .find((x) => isVisible(x) && /選択してください/.test((x.textContent || "") + (x.placeholder || "")) && (x.textContent || "").length < 40);
+        if (c) return c;
+        parent = parent.parentElement;
+      }
+    }
+    return null;
+  }
+
+  // カテゴリ画面の範囲（パンくず「カテゴリ一覧 > …」を除いた選択肢の入れ物）を探す
+  //   ※ ページ下部のリンク（li）を拾わないよう、カテゴリ画面の中だけを見る
+  function getCategoryScope() {
+    const head = [...document.querySelectorAll("li")]
+      .find((li) => isVisible(li) && (li.innerText || "").trim() === "カテゴリ一覧");
+    if (!head) return null;
+    const crumb = head.parentElement;
+    let p = crumb && crumb.parentElement;
+    for (let i = 0; i < 8 && p; i++) {
+      const n = [...p.querySelectorAll("li")].filter((li) => isVisible(li) && !crumb.contains(li)).length;
+      if (n >= 1) return { box: p, crumb };
+      p = p.parentElement;
+    }
+    return null;
+  }
+
+  // 今表示されている選択肢（テキストと要素）を集める
+  function getVisibleCategoryOptions() {
+    const sc = getCategoryScope();
+    if (!sc) return [];
+    return [...sc.box.querySelectorAll("li")]
+      .filter((li) => isVisible(li) && !sc.crumb.contains(li))
+      .map((li) => ({ el: li, text: (li.innerText || li.textContent || "").trim() }))
+      .filter((o) => o.text && o.text.length <= 40 && !o.text.includes("\n"));
+  }
+
+  // ★各段で「メルカリのカテゴリ全体の言葉」と一番よく合う項目を選ぶ。
+  //   メルカリとYahoo!フリマで段の切り方が違う（例: 時計）ため、同じ段どうしではなく全体で比べる。
+  //   後ろの段（より細かい言葉）ほど重く見る。
+  const catParts = (t) => String(t || "")
+    .replace(/（.*?）|\(.*?\)/g, "")
+    .split(/[、・･／/]/)
+    .map((x) => normCat(x))
+    .filter((x) => x.length >= 2);
+
+  function scoreCategoryOption(optText, segs) {
+    const no = normCat(optText);
+    const oparts = catParts(optText);
+    let score = 0;
+    segs.forEach((seg, i) => {
+      const w = i + 1;
+      const ns = normCat(seg.replace(/（.*?）|\(.*?\)/g, ""));
+      if (!ns) return;
+      if (no === ns) { score += 10 * w; return; }
+      if (oparts.includes(ns)) { score += 6 * w; return; }
+      const sparts = catParts(seg);
+      if (sparts.some((sp) => oparts.includes(sp))) { score += 4 * w; return; }
+      if (ns.length >= 2 && no.includes(ns)) { score += 3 * w; return; }
+      if (no.length >= 2 && ns.includes(no)) { score += 2 * w; return; }
+    });
+    if (/^その他/.test(optText)) score = score > 0 ? score - 1 : 0;
+    return score;
+  }
+
+  function pickCategoryOption(options, segs, level) {
+    if (!options.length) return null;
+    // 1段目: 大分類の対応表を優先
+    if (level === 0 && MERCARI_TO_YAHOO_TOP[segs[0]]) {
+      for (const w of MERCARI_TO_YAHOO_TOP[segs[0]]) {
+        const hit = options.find((o) => normCat(o.text) === normCat(w));
+        if (hit) return hit;
+      }
+    }
+    const scored = options.map((o) => ({ o, s: scoreCategoryOption(o.text, segs) }))
+      .sort((x, y) => y.s - x.s);
+    if (scored[0] && scored[0].s > 0) return scored[0].o;
+    // どれも合わないときは、その段の「その他〜」を選ぶ（親までは合っているため）
+    if (level > 0) return options.find((o) => /^その他/.test(o.text)) || null;
+    return null;
+  }
+
+  // カテゴリ欄に表示されている現在の選択（例: 花、ガーデニング > アレンジメント用品、資材 > ワイヤー）
+  function readSelectedCategoryText() {
+    const trigger = findCategoryTrigger();
+    let box = null;
+    const labels = [...document.querySelectorAll("span, p, label, div")]
+      .filter((el) => (el.textContent || "").trim() === "カテゴリ" && el.children.length <= 2 && isVisible(el));
+    for (const label of labels) {
+      let p = label.parentElement;
+      for (let i = 0; i < 4 && p && !box; i++) {
+        box = [...p.querySelectorAll("div")].find((d) => isVisible(d) && / > /.test(d.innerText || "") && (d.innerText || "").length < 120) || null;
+        p = p.parentElement;
+      }
+      if (box) break;
+    }
+    return box ? (box.innerText || "").replace(/\s*\n\s*/g, " ").trim() : (trigger ? "" : "");
+  }
+
+  async function fillCategory(data) {
+    const segs = getCategoryHints(data.categoryPath || data.category);
+    if (!segs.length) return { key: "category", ok: false, reason: "メルカリのカテゴリデータなし" };
+
+    if (!getVisibleCategoryOptions().length) {
+      const trigger = findCategoryTrigger();
+      if (!trigger) return { key: "category", ok: false, reason: "カテゴリ欄が見つからない" };
+      trigger.scrollIntoView({ block: "center" });
+      trigger.click();
+      const opened = await waitForElement(() => (getVisibleCategoryOptions().length >= 3 ? true : null), 3000, 150);
+      if (!opened) return { key: "category", ok: false, reason: "カテゴリ画面が開かない" };
+    }
+
+    const chosen = [];
+    for (let level = 0; level < 7; level++) {
+      await sleep(300);
+      const options = getVisibleCategoryOptions();
+      if (!options.length) break;
+      const hit = pickCategoryOption(options, segs, level);
+      if (!hit) {
+        return {
+          key: "category", ok: false,
+          reason: chosen.length
+            ? `「${chosen.join(" > ")}」まで選択。続きに合う項目が無いため、手動で選んでください`
+            : `「${segs[0]}」に合う項目が無い`
+        };
+      }
+      const before = options.map((o) => o.text).join("|");
+      hit.el.click();
+      chosen.push(hit.text);
+      // 次の段に切り替わるのを待つ。切り替わらなければ最後の段（選択完了）
+      const changed = await waitForElement(() => {
+        const now = getVisibleCategoryOptions().map((o) => o.text).join("|");
+        return now !== before ? true : null;
+      }, 1500, 120);
+      if (!changed) break;
+    }
+
+    await sleep(500);
+    const shown = readSelectedCategoryText();
+    const last  = chosen[chosen.length - 1];
+    if (shown && !/選択してください/.test(shown) && normCat(shown).endsWith(normCat(last))) {
+      return { key: "category", ok: true, value: chosen.join(" > ") };
+    }
+    return { key: "category", ok: false, reason: `「${chosen.join(" > ")}」まで選択。カテゴリ欄を確認し、続きがあれば手動で選んでください` };
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -1165,14 +1600,31 @@
   // 候補パネル
   // ═══════════════════════════════════════════════════════════════
 
-  async function showCandidatesPanel(data) {
+  // ★v1.5.4: 自動で入らなかった項目があるときだけ表示する
+  //   opts.needBrand    … メルカリにブランドがあるのに自動選択できなかった
+  //   opts.needCategory … カテゴリを自動で選べなかった
+  //   opts.needHashtag  … ハッシュタグを自動で入れられなかった
+  //   opts.needCondition… 商品の状態を自動で選べなかった
+  async function showCandidatesPanel(data, opts = {}) {
     const old = document.getElementById("furima-paypay-candidates");
     if (old) old.remove();
 
+    const showBrand = !!opts.needBrand;
+    const showTags  = !!opts.needHashtag;
+    const showCat   = !!opts.needCategory;
+    const showCond  = !!opts.needCondition;
+    if (!showBrand && !showTags && !showCat && !showCond) return;
+
     const conditionHint = pickYahooFurimaCondition(data.condition);
     const categoryHints = getCategoryHints(data.categoryPath || data.category);
-    const hashtagCandidates = buildHashtagCandidates(data, 5);
-    const brandCandidates = await buildBrandCandidatesAsync(data, 3);
+    const hashtagCandidates = showTags ? buildHashtagCandidates(data, 5) : [];
+    // ブランド候補は「メルカリのブランド」を先頭に。商品名からの推測候補は、メルカリにブランドがあるときだけ足す
+    let brandCandidates = [];
+    if (showBrand) {
+      const mb = sanitizeBrand(data.brand);
+      const extra = mb ? await buildBrandCandidatesAsync(data, 3) : [];
+      brandCandidates = [mb, ...extra].filter((v, i, a) => v && a.indexOf(v) === i).slice(0, 4);
+    }
 
     const wrap = document.createElement("div");
     wrap.id = "furima-paypay-candidates";
@@ -1357,12 +1809,14 @@
       wrap.appendChild(tagSec);
     }
 
+    if (showCat || showCond) {
     const note = document.createElement("div");
-    note.textContent = "以下の項目は、参考表示です。フォームの選択肢から手動でお選びください。";
+    note.textContent = "以下の項目は、自動で選べなかったため参考表示です。フォームの選択肢から手動でお選びください。";
     Object.assign(note.style, {
       color: "#666", fontSize: "12px", lineHeight: "1.5", marginBottom: "10px"
     });
     wrap.appendChild(note);
+    }
 
     const addSection = (label, valueLines) => {
       const sec = document.createElement("div");
@@ -1385,17 +1839,20 @@
       wrap.appendChild(sec);
     };
 
-    if (categoryHints.length) {
-      addSection("📁 カテゴリ（メルカリ側）", categoryHints.join(" > "));
-    } else {
-      addSection("📁 カテゴリ", "メルカリ側の情報なし");
+    if (showCat) {
+      if (categoryHints.length) {
+        addSection("📁 カテゴリ（メルカリ側）", categoryHints.join(" > "));
+      } else {
+        addSection("📁 カテゴリ", "メルカリ側の情報なし");
+      }
     }
 
-    const condLines = [
-      `メルカリ: ${data.condition || "不明"}`,
-      `→ Yahoo!フリマ推奨: ${conditionHint}（自動選択済み）`
-    ];
-    addSection("🏷 商品の状態", condLines);
+    if (showCond) {
+      addSection("🏷 商品の状態", [
+        `メルカリ: ${data.condition || "不明"}`,
+        `→ Yahoo!フリマ推奨: ${conditionHint}`
+      ]);
+    }
 
     const closeBtn = document.createElement("button");
     closeBtn.textContent = "閉じる";
@@ -1478,6 +1935,36 @@
     }
     await sleep(300);
 
+    // ★v1.5.4: 発送までの日数・カテゴリ
+    try {
+      results.push(await fillTimeToShip(data));
+    } catch (e) {
+      results.push({ key: "shipDays", ok: false, reason: e.message || "例外" });
+    }
+    await sleep(150);
+    try {
+      results.push(await fillCategory(data));
+    } catch (e) {
+      console.error("[PayPay] fillCategory error:", e);
+      results.push({ key: "category", ok: false, reason: e.message || "例外" });
+    }
+    await sleep(300);
+    // ブランド欄はカテゴリ選択後に出るので、カテゴリのあとに入れる
+    //   ★ページが選択されていない（管理アシストのポップアップが前面にある）と、ブランド候補を確定できない。
+    //     その場合は「ページを1回クリックしたら自動で入れる」ように後回しにする。
+    let brandDeferred = false;
+    if (sanitizeBrand(data.brand) && !document.hasFocus()) {
+      brandDeferred = true;
+      results.push({ key: "brand", ok: false, pending: true, reason: "ページを1回クリックすると自動で入ります" });
+    } else {
+      try {
+        results.push(await fillBrandYahoo(data));
+      } catch (e) {
+        results.push({ key: "brand", ok: false, reason: e.message || "例外" });
+      }
+    }
+    await sleep(200);
+
     try {
       results.push(await uploadImages(data));
     } catch (e) {
@@ -1485,7 +1972,15 @@
       results.push({ key: "images", ok: false, reason: e.message || "例外" });
     }
 
-    await showCandidatesPanel(data);
+    {
+      const r = (k) => results.find((x) => x.key === k) || {};
+      await showCandidatesPanel(data, {
+        needBrand:     !!sanitizeBrand(data.brand) && !r("brand").ok && !r("brand").pending,
+        needCategory:  !r("category").ok,
+        needHashtag:   !r("hashtag").ok,
+        needCondition: !r("condition").ok
+      });
+    }
 
     // ★v4.0.16 手数料が反映されたか判定し、ダメだったときだけ誘導UIを出す
     //   （Reactの再描画を待つため少し間を置く）
@@ -1495,7 +1990,7 @@
     if (!feeReflected) showPriceClickHint();
 
     const okCount = results.filter((r) => r.ok).length;
-    const ngList = results.filter((r) => !r.ok).map((r) => `${r.key}(${r.reason})`);
+    const ngList = results.filter((r) => !r.ok && !r.skipped && !r.pending).map((r) => `${r.key}(${r.reason})`);
     console.log("[FURIMA PayPay] fill result", { results });
 
     // ★管理アシスト用: 実行結果パネルに表示するためステータスを保存
@@ -1508,12 +2003,54 @@
           descOk:      flag("description"),
           conditionOk: flag("condition"),
           brandOk:     flag("brand"),
+          brandSkipped: results.some((r) => r.key === "brand" && r.skipped),
+          brandPending: results.some((r) => r.key === "brand" && r.pending),
+          brandText:   (results.find((r) => r.key === "brand" && r.ok) || {}).value || "",
           imageOk:     flag("images"),
+          categoryOk:  flag("category"),
+          hashtagOk:   flag("hashtag"),
+          hashtagText: (results.find((r) => r.key === "hashtag" && r.ok) || {}).value || "",
+          shipDaysOk:  flag("shipDays"),
           okCount,
           ngList
         })
       });
     } catch (_) {}
+
+    // ★後回しにしたブランド入力: ページがクリックされて選択されたら実行する（最大5分待つ）
+    if (brandDeferred) {
+      toast(`ページを1回クリックすると、ブランド「${sanitizeBrand(data.brand)}」を自動で入力します`);
+      const runBrand = async () => {
+        await sleep(300);
+        let res;
+        try { res = await fillBrandYahoo(data); } catch (e) { res = { ok: false, reason: e.message || "例外" }; }
+        if (res.ok) {
+          toast(`ブランドを入力しました: ${res.value}`);
+        } else {
+          toast(`ブランドを自動で入力できませんでした（${res.reason}）`);
+          try { await showCandidatesPanel(data, { needBrand: true }); } catch (e) {}
+        }
+        // 実行結果パネル用のステータスも更新しておく（ポップアップを開き直すと反映）
+        try {
+          const cur = JSON.parse((await chrome.storage.local.get(["paypayFillResult"])).paypayFillResult || "{}");
+          cur.brandOk = !!res.ok;
+          cur.brandPending = false;
+          cur.brandText = res.ok ? res.value : "";
+          if (!res.ok) cur.ngList = [...(cur.ngList || []), `brand(${res.reason})`];
+          await chrome.storage.local.set({ paypayFillResult: JSON.stringify(cur) });
+        } catch (e) {}
+      };
+      let done = false;
+      const onFocus = () => {
+        if (done) return;
+        done = true;
+        window.removeEventListener("focus", onFocus);
+        runBrand();
+      };
+      window.addEventListener("focus", onFocus);
+      setTimeout(() => window.removeEventListener("focus", onFocus), 5 * 60 * 1000);
+      if (document.hasFocus()) onFocus();
+    }
 
     const feeNote = feeReflected ? "" : " ※価格欄を1回クリックして手数料反映";
     if (ngList.length === 0) {
