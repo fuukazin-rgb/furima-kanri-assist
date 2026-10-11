@@ -1220,6 +1220,81 @@
   }
 
   // ★v1.5.4 ブランドの探し直し用
+  // ═══════════════════════════════════════════════════════════════
+  // ★v1.5.6 ブランドの表記ゆれ対策と、商品名からのブランド推定
+  // ═══════════════════════════════════════════════════════════════
+  // ゆるい比較用: ひらがな→カタカナ、ヴ→ブ、長音・記号・空白を除く
+  function looseBrandKey(t) {
+    let s = String(t || "").normalize("NFKC").toLowerCase();
+    s = s.replace(/[ぁ-ゖ]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+    s = s.replace(/ヴァ/g, "バ").replace(/ヴィ/g, "ビ").replace(/ヴェ/g, "ベ").replace(/ヴォ/g, "ボ").replace(/ヴ/g, "ブ");
+    s = s.replace(/[ァィゥェォッャュョヮ]/g, (c) => ({ "ァ": "ア", "ィ": "イ", "ゥ": "ウ", "ェ": "エ", "ォ": "オ", "ッ": "ツ", "ャ": "ヤ", "ュ": "ユ", "ョ": "ヨ", "ヮ": "ワ" }[c]));
+    s = s.replace(/[（(][^)）]*[)）]/g, "");
+    s = s.replace(/[\s・･'’.\-ー―‐_&＆!！]/g, "");
+    return s;
+  }
+
+  // 「ポーター(PORTER)」「PORTER / ポーター」のような名前を分けて検索語にする
+  function splitBrandVariants(brand) {
+    const b = String(brand || "").normalize("NFKC").trim();
+    const out = [b];
+    const inParen = b.match(/[（(]([^)）]+)[)）]/);
+    if (inParen) { out.push(inParen[1].trim()); out.push(b.replace(/[（(][^)）]*[)）]/g, "").trim()); }
+    b.split(/\s*[\/／|｜]\s*/).forEach((p) => out.push(p.trim()));
+    out.push(b.replace(/[・･]/g, ""), b.replace(/\s+/g, ""));
+    return out.filter((v, i, a) => v && v.length >= 2 && a.indexOf(v) === i);
+  }
+
+  // 候補の名前（複数行）がブランドに合うか。点数が高いほど確か
+  function brandMatchScore(candidateLines, brandNames) {
+    const bl = brandNames.map(looseBrandKey).filter(Boolean);
+    let best = 0;
+    for (const raw of candidateLines) {
+      const c = looseBrandKey(raw);
+      if (!c) continue;
+      for (const b of bl) {
+        if (c === b) best = Math.max(best, 100);
+        else if (c.length >= 3 && b.startsWith(c)) best = Math.max(best, 60 + c.length);
+        else if (b.length >= 3 && c.startsWith(b)) best = Math.max(best, 50 + b.length);
+      }
+    }
+    return best;
+  }
+
+  // 商品名から、辞書にあるブランド名を探す（誤爆を避けるため短いカナ語・英字は単語単位で）
+  const BRAND_INFER_STOP = new Set(["ロード", "スリー", "エース", "ゼット", "パレス", "キス", "ボス", "ピン", "アリ", "ホカ", "ビボ", "サカイ", "カワイ", "スック", "ルンバ"]);
+  function inferBrandFromTitle(title, keywords, extraMap) {
+    const t = String(title || "").normalize("NFKC");
+    const tl = t.toLowerCase();
+    const hits = [];
+    for (const [re, brand] of (extraMap || [])) {
+      const m = t.match(re);
+      if (m) hits.push({ brand, pos: m.index, len: 99 });
+    }
+    for (const kw0 of keywords || []) {
+      const kw = String(kw0).normalize("NFKC");
+      if (BRAND_INFER_STOP.has(kw)) continue;
+      const latin = /^[\x20-\x7E]+$/.test(kw);
+      const kanaOnly = /^[ァ-ヴーぁ-ん・]+$/.test(kw);
+      if (latin && kw.length < 3) continue;
+      if (kanaOnly && kw.length < 4) continue;
+      let pos = -1;
+      if (latin) {
+        const re = new RegExp("(^|[^a-z0-9])" + kw.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "($|[^a-z0-9])");
+        const m = tl.match(re);
+        if (m) pos = m.index + m[1].length;
+      } else {
+        // カナ・漢字は表記ゆれ（小さい文字・ヴ/ブ・長音・空白）を吸収して探す
+        const lk = looseBrandKey(kw);
+        pos = lk.length >= 2 ? looseBrandKey(t).indexOf(lk) : -1;
+      }
+      if (pos >= 0) hits.push({ brand: kw0, pos, len: kw.length });
+    }
+    if (!hits.length) return "";
+    hits.sort((a, b) => (b.len - a.len) || (a.pos - b.pos));
+    return hits[0].brand;
+  }
+
   const RAKUMA_BRAND_ALIASES = {
     "セイコータイムクリエーション": ["SEIKO", "セイコー"],
     "セイコーウオッチ": ["SEIKO", "セイコー"],
@@ -1241,7 +1316,7 @@
   function rakumaBrandQueries(brand) {
     // ★英語表記を優先: 言い換えの英語名 → メルカリのブランド名 → そのほか
     const aliases = RAKUMA_BRAND_ALIASES[brand] || [];
-    const qs = [...aliases.filter(isLatinName), brand, ...aliases.filter((a) => !isLatinName(a))];
+    const qs = [...aliases.filter(isLatinName), ...splitBrandVariants(brand), ...aliases.filter((a) => !isLatinName(a))];
     const stripped = brand.replace(RAKUMA_BRAND_SUFFIX_RE, "").trim();
     if (stripped && stripped !== brand) qs.push(stripped);
     const firstWord = brand.split(/[\s　・]/)[0];
@@ -1251,7 +1326,7 @@
   }
 
   // モーダルの候補から選ぶ: ① ブランド名（言い換え含む）と完全一致 ② 候補名がブランド名の先頭と一致（一番長いもの）
-  async function pickBrandCandidate(container, exactNames, nb, timeout = 2500) {
+  async function pickBrandCandidate(container, exactNames, nb, timeout = 4000) {
     const start = Date.now();
     while (Date.now() - start < timeout) {
       const items = [...container.querySelectorAll("li, [role='option'], [role='button'], button, a, div")]
@@ -1264,16 +1339,13 @@
         .map((el) => ({ el, lines: (el.innerText || "").split("\n").map(normBrandKey).filter(Boolean) }))
         .filter((x) => x.lines.length && x.lines.join("").length <= 60);
 
-      // 完全一致が複数あるときは、英語表記の候補を優先
-      const exactHits = items.filter((x) => x.lines.some((l) => exactNames.includes(l)));
-      let hit = exactHits.find((x) => /^[a-z0-9 &+.'-]+$/.test(x.lines[0])) || exactHits[0];
-      if (!hit) {
-        const pref = items
-          .map((x) => ({ x, len: Math.max(0, ...x.lines.filter((l) => l.length >= 3 && nb.startsWith(l)).map((l) => l.length)) }))
-          .filter((p) => p.len > 0)
-          .sort((a, b) => b.len - a.len);
-        if (pref.length) hit = pref[0].x;
-      }
+      // ★v1.5.6: 表記ゆれ（ひらがな/カタカナ・ヴ/ブ・長音・記号）を吸収して点数で選ぶ
+      //   同じ点数なら英語表記の候補を優先
+      const scored = items
+        .map((x) => ({ x, sc: brandMatchScore(x.lines, [...exactNames, nb]) }))
+        .filter((p) => p.sc > 0)
+        .sort((p, q) => (q.sc - p.sc) || ((/^[a-z0-9 &+.'-]+$/.test(q.x.lines[0]) ? 1 : 0) - (/^[a-z0-9 &+.'-]+$/.test(p.x.lines[0]) ? 1 : 0)));
+      let hit = scored.length ? scored[0].x : null;
       if (hit) {
         // ★押せるボタンを優先する: 行の枠（role=listitem など）の中にボタンがある作りなので、中のボタンを押す
         if (hit.el.matches("button, [role='button'], [role='option'], a")) return hit.el;
@@ -1328,7 +1400,7 @@
 
     // ★v1.5.4: メルカリのブランド名で見つからないときは、言い換え・会社名を外した名前などで探し直す
     //   例: セイコータイムクリエーション → セイコー / SEIKO
-    const exactNames = [safeBrand, ...(RAKUMA_BRAND_ALIASES[safeBrand] || [])].map(normBrandKey);
+    const exactNames = [...splitBrandVariants(safeBrand), ...(RAKUMA_BRAND_ALIASES[safeBrand] || [])].map(normBrandKey);
     const nb = normBrandKey(safeBrand);
     let candidate = null;
     for (const q of rakumaBrandQueries(safeBrand)) {
@@ -1654,6 +1726,42 @@
     return "";
   }
 
+  // ★v1.5.5: トレーディングカード
+  //   ラクマのトレカは「Box/デッキ/パック・シングルカード・カードサプライ/アクセサリ・その他」の種類別。
+  //   ゲーム名（ポケモン・遊戯王など）はブランドで指定する。
+  const TCG_GAME_TO_RAKUMA_BRAND = [
+    [/ポケモン|ポケカ|pokemon|pokémon/i, "ポケモン"],
+    [/遊戯王|yu-?gi-?oh/i, "遊戯王"],
+    [/デュエル・?マスターズ|デュエマ/i, "デュエルマスターズ"],
+    [/ワンピース|one ?piece/i, "ワンピース"],
+    [/ヴァイス.?シュヴァルツ|weiss/i, "ヴァイスシュヴァルツ"],
+    [/ドラゴンボール|dragon ?ball/i, "ドラゴンボール"],
+    [/マジック.?ザ.?ギャザリング|mtg|magic/i, "マジック：ザ・ギャザリング"],
+    [/バトルスピリッツ|バトスピ/i, "バトルスピリッツ"],
+    [/デジモン|digimon/i, "デジモン"],
+    [/ユニオンアリーナ|union ?arena/i, "ユニオンアリーナ"]
+  ];
+  const isTcgPath = (path) => /トレーディングカード|トレカ/.test(String(path || ""));
+  function tcgBrandFor(categoryPath, title) {
+    const last = String(categoryPath || "").split(">").map((x) => x.trim()).filter(Boolean).pop() || "";
+    for (const [re, brand] of TCG_GAME_TO_RAKUMA_BRAND) if (re.test(last)) return brand;
+    for (const [re, brand] of TCG_GAME_TO_RAKUMA_BRAND) if (re.test(String(title || ""))) return brand;
+    return "";
+  }
+  function tcgKindFor(title) {
+    const t = String(title || "");
+    if (/スリーブ|ローダー|プレイマット|デッキケース|ストレージ|サプライ|カードケース|ファイル|バインダー/.test(t)) return "カードサプライ/アクセサリ";
+    if (/\bBOX\b|ボックス|box|未開封パック|パック|デッキ|スターター|カートン/i.test(t) && !/枚/.test(t)) return "Box/デッキ/パック";
+    return "シングルカード";
+  }
+  function pickRakumaTcgLeaf(leaves, title) {
+    const kind = tcgKindFor(title);
+    const inTcg = leaves.filter((l) => l.path.some((p) => /トレーディングカード/.test(p.text)));
+    return inTcg.find((l) => normCat(l.text) === normCat(kind))
+        || inTcg.find((l) => /その他/.test(l.text))
+        || null;
+  }
+
   function pickRakumaCategoryLeaf(leaves, mercariPath, hintText = "") {
     const segs = mercariPath.split(">").map((x) => x.trim()).filter(Boolean);
     if (!segs.length) return null;
@@ -1688,7 +1796,7 @@
     return best.l;
   }
 
-  async function fillCategoryAuto(categoryPath, hintText = "") {
+  async function fillCategoryAuto(categoryPath, hintText = "", titleText = "") {
     if (!categoryPath) return { ok: false, reason: "メルカリのカテゴリデータなし" };
     let dialog = document.querySelector('[role="dialog"]');
     if (!dialog) {
@@ -1704,7 +1812,9 @@
     await sleep(300);
 
     const leaves = buildRakumaCategoryLeaves(dialog);
-    const best = pickRakumaCategoryLeaf(leaves, categoryPath, hintText);
+    const best = isTcgPath(categoryPath)
+      ? pickRakumaTcgLeaf(leaves, titleText || hintText)
+      : pickRakumaCategoryLeaf(leaves, categoryPath, hintText);
     if (!best) {
       // 合うものが無い → 画面を閉じて手動に任せる
       const close = [...dialog.querySelectorAll("button")].find((b) => /閉じる|キャンセル/.test(b.getAttribute("aria-label") || b.innerText || ""));
@@ -1771,7 +1881,7 @@
     let shipDaysRes = { ok: false, reason: "未実行" };
     try { shipDaysRes = await fillDeliveryDate(mercariData.shipDays); } catch (e) { shipDaysRes = { ok: false, reason: e.message || "例外" }; }
     let categoryRes = { ok: false, reason: "未実行" };
-    try { categoryRes = await fillCategoryAuto(categoryPath, `${title} ${(mercariData.description || "").slice(0, 300)}`); } catch (e) { categoryRes = { ok: false, reason: e.message || "例外" }; }
+    try { categoryRes = await fillCategoryAuto(categoryPath, `${title} ${(mercariData.description || "").slice(0, 300)}`, title); } catch (e) { categoryRes = { ok: false, reason: e.message || "例外" }; }
     console.log("[FURIMA Rakuma] shipDays/category", shipDaysRes, categoryRes);
     const shipDaysOk = !!shipDaysRes.ok;
     const categoryOk = !!categoryRes.ok;
@@ -1779,6 +1889,7 @@
     let brandOk = false;
     let autoBrandFailed = false;
     let brandCandidates = [];
+    let tcgBrandTried = false;
 
     if (brand) {
       brandOk = await fillBrand(brand);
@@ -1792,6 +1903,17 @@
     } else {
       brandCandidates = inferBrandCandidates(title, mercariData.description || "", categoryPath);
       console.log(`[FURIMA Rakuma] inferred brand candidates: ${brandCandidates.join(", ")}`);
+      // ★v1.5.5/1.5.6: メルカリにブランドが無くても、トレカのゲーム名や商品名の中のブランド名から自動で入れる
+      const autoBrand = (isTcgPath(categoryPath) ? tcgBrandFor(categoryPath, title) : "")
+        || inferBrandFromTitle(title, BRAND_KEYWORDS);
+      if (autoBrand) {
+        console.log(`[FURIMA Rakuma] brand inferred from title/category: ${autoBrand}`);
+        tcgBrandTried = true;
+        brandOk = await fillBrand(autoBrand);
+        if (brandOk) brandCandidates = [];
+        else brandCandidates = [autoBrand, ...brandCandidates].filter((v, i, a) => a.indexOf(v) === i).slice(0, 5);
+        await sleep(500);
+      }
     }
 
     const currentCategory = getCurrentCategoryText();
@@ -1802,7 +1924,7 @@
     //   ・メルカリにブランドがあるのに自動入力できなかった → ブランド候補を表示
     //   ・メルカリにブランドが無い商品では、商品名から推測した候補（ブランドではない言葉が混ざる）は出さない
     const needCategory = !categoryOk;
-    const needBrand    = !!brand && !brandOk;
+    const needBrand    = (!!brand || tcgBrandTried) && !brandOk;
     if (needCategory || needBrand) {
       showHelperPanel({
         categoryCandidates: needCategory ? categoryCandidates : [],

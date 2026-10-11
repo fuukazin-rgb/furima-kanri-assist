@@ -1008,6 +1008,398 @@
     .replace(/[\s・･'’.\-]/g, "")
     .toLowerCase();
 
+  // ═══════════════════════════════════════════════════════════════
+  // ★v1.5.6 ブランドの表記ゆれ対策と、商品名からのブランド推定
+  // ═══════════════════════════════════════════════════════════════
+  // ゆるい比較用: ひらがな→カタカナ、ヴ→ブ、長音・記号・空白を除く
+  function looseBrandKey(t) {
+    let s = String(t || "").normalize("NFKC").toLowerCase();
+    s = s.replace(/[ぁ-ゖ]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+    s = s.replace(/ヴァ/g, "バ").replace(/ヴィ/g, "ビ").replace(/ヴェ/g, "ベ").replace(/ヴォ/g, "ボ").replace(/ヴ/g, "ブ");
+    s = s.replace(/[ァィゥェォッャュョヮ]/g, (c) => ({ "ァ": "ア", "ィ": "イ", "ゥ": "ウ", "ェ": "エ", "ォ": "オ", "ッ": "ツ", "ャ": "ヤ", "ュ": "ユ", "ョ": "ヨ", "ヮ": "ワ" }[c]));
+    s = s.replace(/[（(][^)）]*[)）]/g, "");
+    s = s.replace(/[\s・･'’.\-ー―‐_&＆!！]/g, "");
+    return s;
+  }
+
+  // 「ポーター(PORTER)」「PORTER / ポーター」のような名前を分けて検索語にする
+  function splitBrandVariants(brand) {
+    const b = String(brand || "").normalize("NFKC").trim();
+    const out = [b];
+    const inParen = b.match(/[（(]([^)）]+)[)）]/);
+    if (inParen) { out.push(inParen[1].trim()); out.push(b.replace(/[（(][^)）]*[)）]/g, "").trim()); }
+    b.split(/\s*[\/／|｜]\s*/).forEach((p) => out.push(p.trim()));
+    out.push(b.replace(/[・･]/g, ""), b.replace(/\s+/g, ""));
+    return out.filter((v, i, a) => v && v.length >= 2 && a.indexOf(v) === i);
+  }
+
+  // 候補の名前（複数行）がブランドに合うか。点数が高いほど確か
+  function brandMatchScore(candidateLines, brandNames) {
+    const bl = brandNames.map(looseBrandKey).filter(Boolean);
+    let best = 0;
+    for (const raw of candidateLines) {
+      const c = looseBrandKey(raw);
+      if (!c) continue;
+      for (const b of bl) {
+        if (c === b) best = Math.max(best, 100);
+        else if (c.length >= 3 && b.startsWith(c)) best = Math.max(best, 60 + c.length);
+        else if (b.length >= 3 && c.startsWith(b)) best = Math.max(best, 50 + b.length);
+      }
+    }
+    return best;
+  }
+
+  // 商品名から、辞書にあるブランド名を探す（誤爆を避けるため短いカナ語・英字は単語単位で）
+  const BRAND_INFER_STOP = new Set(["ロード", "スリー", "エース", "ゼット", "パレス", "キス", "ボス", "ピン", "アリ", "ホカ", "ビボ", "サカイ", "カワイ", "スック", "ルンバ"]);
+  function inferBrandFromTitle(title, keywords, extraMap) {
+    const t = String(title || "").normalize("NFKC");
+    const tl = t.toLowerCase();
+    const hits = [];
+    for (const [re, brand] of (extraMap || [])) {
+      const m = t.match(re);
+      if (m) hits.push({ brand, pos: m.index, len: 99 });
+    }
+    for (const kw0 of keywords || []) {
+      const kw = String(kw0).normalize("NFKC");
+      if (BRAND_INFER_STOP.has(kw)) continue;
+      const latin = /^[\x20-\x7E]+$/.test(kw);
+      const kanaOnly = /^[ァ-ヴーぁ-ん・]+$/.test(kw);
+      if (latin && kw.length < 3) continue;
+      if (kanaOnly && kw.length < 4) continue;
+      let pos = -1;
+      if (latin) {
+        const re = new RegExp("(^|[^a-z0-9])" + kw.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "($|[^a-z0-9])");
+        const m = tl.match(re);
+        if (m) pos = m.index + m[1].length;
+      } else {
+        // カナ・漢字は表記ゆれ（小さい文字・ヴ/ブ・長音・空白）を吸収して探す
+        const lk = looseBrandKey(kw);
+        pos = lk.length >= 2 ? looseBrandKey(t).indexOf(lk) : -1;
+      }
+      if (pos >= 0) hits.push({ brand: kw0, pos, len: kw.length });
+    }
+    if (!hits.length) return "";
+    hits.sort((a, b) => (b.len - a.len) || (a.pos - b.pos));
+    return hits[0].brand;
+  }
+
+  // ラクマ側と同じブランド辞書（商品名からの推定に使う）
+  const BRAND_KEYWORDS = [
+    // === カメラ本体・レンズ ===
+    "キヤノン", "Canon", "ニコン", "Nikon",
+    "ソニー", "SONY", "富士フイルム", "FUJIFILM", "FUJI",
+    "オリンパス", "OLYMPUS", "OM SYSTEM", "OMシステム",
+    "パナソニック", "Panasonic", "LUMIX", "ルミックス",
+    "RICOH", "リコー", "PENTAX", "ペンタックス",
+    "Leica", "ライカ", "Hasselblad", "ハッセルブラッド",
+    "シグマ", "SIGMA", "タムロン", "TAMRON",
+    "ツァイス", "ZEISS", "Carl Zeiss",
+    "コダック", "KODAK", "ポラロイド", "Polaroid",
+    "Mamiya", "マミヤ", "Bronica", "ブロニカ",
+    "Manfrotto", "マンフロット", "GITZO", "ジッツオ",
+    "VELBON", "ベルボン", "SLIK", "スリック",
+    "Lowepro", "ロープロ", "Peak Design", "ピークデザイン",
+    // === 映像機器・ジンバル・アクションカメラ ===
+    "DJI", "ディージェイアイ", "OSMO", "Osmo", "Mavic", "RONIN", "Pocket",
+    "GoPro", "ゴープロ",
+    "Insta360", "インスタ360",
+    "Zhiyun", "ジーウン", "Feiyu", "Feiyutech", "フェイユー",
+    "BlackMagic", "ブラックマジック", "BlackMagicDesign",
+    "ARRI", "アリ",
+    "Atomos", "アトモス", "SmallRig", "スモールリグ",
+    "Aputure", "アプチャー", "Godox", "ゴドックス",
+    "Profoto", "プロフォト", "Elinchrom", "エリンクローム",
+    "Rode", "ロード", "TASCAM", "タスカム",
+    "DJI Mic", "Hollyland",
+    // === スマホ・タブレット ===
+    "Apple", "アップル", "iPhone", "アイフォン", "iPad", "アイパッド",
+    "Samsung", "サムスン", "ギャラクシー",
+    "Xperia", "エクスペリア", "AQUOS", "アクオス",
+    "Pixel", "ピクセル", "Google Pixel",
+    "Huawei", "ファーウェイ", "Xiaomi", "シャオミ",
+    "OPPO", "オッポ", "OnePlus", "ワンプラス",
+    "Nothing", "ナッシング", "Motorola", "モトローラ",
+    "Realme", "リアルミー", "Vivo", "ビボ",
+    "Kindle", "キンドル", "Fire HD",
+    // === PC・周辺機器 ===
+    "Microsoft", "マイクロソフト", "Surface", "サーフェス",
+    "Lenovo", "レノボ", "ThinkPad", "シンクパッド",
+    "Dell", "HP", "ヒューレットパッカード",
+    "ASUS", "エイスース", "Acer", "エイサー", "MSI", "エムエスアイ",
+    "富士通", "FUJITSU", "NEC", "東芝", "TOSHIBA", "Dynabook",
+    "Razer", "レイザー", "ROG", "Alienware", "エイリアンウェア",
+    "Logicool", "ロジクール", "Logitech", "ロジテック",
+    "Anker", "アンカー", "Belkin", "ベルキン",
+    "BUFFALO", "バッファロー", "I-O DATA", "アイオーデータ", "ELECOM", "エレコム",
+    "Corsair", "コルセア",
+    "Intel", "インテル", "AMD", "Ryzen", "Core i",
+    "NVIDIA", "GeForce", "Radeon",
+    "Western Digital", "Seagate", "シーゲート",
+    "Crucial", "クルーシャル", "Kingston", "キングストン", "SanDisk", "サンディスク",
+    "SteelSeries", "スティールシリーズ", "HyperX",
+    // === オーディオ ===
+    "BOSE", "ボーズ", "JBL", "ヤマハ", "YAMAHA",
+    "Pioneer", "パイオニア", "DENON", "デノン", "Marantz", "マランツ",
+    "Bang & Olufsen", "B&O", "バングアンドオルフセン",
+    "Sennheiser", "ゼンハイザー", "AKG",
+    "audio-technica", "オーディオテクニカ",
+    "SHURE", "シュア", "Beyerdynamic", "ベイヤーダイナミック",
+    "Beats", "ビーツ", "AirPods", "エアポッズ",
+    "Shokz", "ショックス", "Jabra", "ジャブラ",
+    "FOSTEX", "フォステクス", "ONKYO", "オンキヨー",
+    "TEAC", "ティアック", "ULTRASONE",
+    "Soundpeats", "サウンドピーツ", "EarFun", "イヤーファン",
+    "FINAL", "ファイナル",
+    // === ゲーム機・玩具メーカー ===
+    "任天堂", "Nintendo", "ニンテンドー", "Nintendo Switch",
+    "PlayStation", "プレイステーション", "PS5", "PS4", "プレステ",
+    "Xbox", "エックスボックス",
+    "Steam Deck", "スチームデック",
+    "ROG Ally", "Meta Quest", "Oculus", "オキュラス",
+    "BANDAI", "バンダイ", "バンダイナムコ",
+    "タカラトミー", "TAKARA TOMY", "Takara Tomy",
+    "セガ", "SEGA", "セガトイズ",
+    "コナミ", "KONAMI", "Konami",
+    "カプコン", "CAPCOM", "Capcom",
+    "スクウェア・エニックス", "スクエニ", "Square Enix", "SQUARE ENIX",
+    "エポック社", "EPOCH",
+    "ポケモン", "Pokemon", "Pokémon",
+    "サンリオ", "Sanrio",
+    "Disney", "ディズニー",
+    "MARVEL", "マーベル",
+    "PEANUTS", "Peanuts",
+    "Miffy", "ミッフィー",
+    "サンエックス", "San-X",
+    "ちいかわ",
+    // === バッグ・カバン ===
+    "ポーター", "PORTER", "吉田カバン", "ヨシダカバン",
+    "ルイヴィトン", "ルイ・ヴィトン", "LOUIS VUITTON", "ヴィトン",
+    "シャネル", "CHANEL", "エルメス", "HERMES",
+    "グッチ", "GUCCI", "プラダ", "PRADA", "コーチ", "COACH",
+    "ケイトスペード", "kate spade", "マイケルコース", "MICHAEL KORS",
+    "サマンサタバサ", "Samantha Thavasa", "アネロ", "anello",
+    "マンハッタンポーテージ", "Manhattan Portage",
+    "BRIEFING", "ブリーフィング", "TUMI", "トゥミ",
+    "RIMOWA", "リモワ", "Samsonite", "サムソナイト",
+    "Ace", "エース", "プロテカ", "PROTECA",
+    // === アウトドア・登山 ===
+    "ノースフェイス", "THE NORTH FACE", "ノースフェース",
+    "グレゴリー", "GREGORY", "アークテリクス", "ARC'TERYX", "Arc'teryx",
+    "パタゴニア", "patagonia", "コロンビア", "Columbia",
+    "ミステリーランチ", "MYSTERY RANCH", "オスプレー", "OSPREY",
+    "カリマー", "karrimor", "ミレー", "MILLET",
+    "モンベル", "mont-bell", "Montbell",
+    "MAMMUT", "マムート",
+    "Salomon", "サロモン", "MERRELL", "メレル",
+    "Black Diamond", "ブラックダイヤモンド",
+    "Coleman", "コールマン", "Snow Peak", "スノーピーク",
+    "Logos", "ロゴス", "Captain Stag", "キャプテンスタッグ",
+    "DOD", "ディーオーディー",
+    // === アパレル ===
+    "ユニクロ", "UNIQLO", "GU", "ジーユー",
+    "ZARA", "ザラ", "H&M", "GAP", "ギャップ",
+    "無印良品", "MUJI",
+    "ビームス", "BEAMS", "ユナイテッドアローズ", "UNITED ARROWS",
+    "シップス", "SHIPS", "アーバンリサーチ", "URBAN RESEARCH",
+    "ジャーナルスタンダード", "JOURNAL STANDARD",
+    "ナノユニバース", "nano universe",
+    "ビューティアンドユース", "BEAUTY&YOUTH",
+    "ベイクルーズ", "BAYCREW'S",
+    "ローリーズファーム", "LOWRYS FARM",
+    // === スポーツ・スニーカー ===
+    "ナイキ", "NIKE", "アディダス", "adidas", "プーマ", "PUMA",
+    "ニューバランス", "New Balance", "コンバース", "CONVERSE",
+    "バンズ", "VANS", "リーボック", "Reebok",
+    "アンダーアーマー", "UNDER ARMOUR",
+    "アシックス", "ASICS", "ミズノ", "MIZUNO",
+    "デサント", "DESCENTE",
+    "ホカ", "HOKA", "HOKA ONE ONE",
+    "Ralph Lauren", "ラルフローレン", "POLO RALPH",
+    "トミーヒルフィガー", "TOMMY HILFIGER",
+    "Lacoste", "ラコステ", "Fred Perry", "フレッドペリー",
+    // === スポーツ用品 ===
+    "ZETT", "ゼット", "SSK", "エスエスケー",
+    "Wilson", "ウィルソン", "Rawlings", "ローリングス",
+    "ルイスビル", "Louisville Slugger",
+    "Dunlop", "ダンロップ", "BABOLAT", "バボラ",
+    "Yonex", "ヨネックス", "PRINCE", "プリンス",
+    "HEAD ヘッド",
+    "Titleist", "タイトリスト", "PING", "ピン",
+    "TaylorMade", "テーラーメイド", "Callaway", "キャロウェイ",
+    "Bridgestone Golf", "ブリヂストンゴルフ", "SRIXON", "スリクソン",
+    "ホンマ", "HONMA",
+    "molten", "モルテン", "MIKASA", "ミカサ",
+    "Spalding", "スポルディング",
+    // === 自転車・バイク ===
+    "ブリヂストン", "BRIDGESTONE", "シマノ", "SHIMANO",
+    "GIANT", "ジャイアント", "TREK", "トレック", "Specialized", "スペシャライズド",
+    "Cannondale", "キャノンデール", "BIANCHI", "ビアンキ",
+    "Pinarello", "ピナレロ", "Colnago", "コルナゴ",
+    "Honda", "ホンダ", "ヤマハ発動機", "Yamaha Motor",
+    "カワサキ", "Kawasaki", "スズキ", "SUZUKI",
+    "Harley-Davidson", "ハーレーダビッドソン",
+    "Ducati", "ドゥカティ", "BMW Motorrad",
+    "SHOEI", "ショウエイ", "Arai", "アライ",
+    "OGK Kabuto", "OGKカブト",
+    // === 高級ブランド ===
+    "バーバリー", "BURBERRY", "ディオール", "Dior",
+    "サンローラン", "Saint Laurent", "ボッテガヴェネタ", "BOTTEGA VENETA",
+    "セリーヌ", "CELINE", "フェンディ", "FENDI",
+    "バレンシアガ", "BALENCIAGA", "ヴァレンティノ", "VALENTINO",
+    "アルマーニ", "ARMANI", "ヴェルサーチ", "VERSACE",
+    "クロエ", "Chloe", "ミュウミュウ", "MIU MIU",
+    "ジバンシィ", "GIVENCHY", "Dolce & Gabbana", "ドルチェ&ガッバーナ",
+    "MaxMara", "マックスマーラ", "Moncler", "モンクレール",
+    "イヴサンローラン", "YSL", "TOM FORD", "トムフォード",
+    // === 時計 ===
+    "オメガ", "OMEGA", "ロレックス", "ROLEX",
+    "カルティエ", "Cartier", "ティファニー", "TIFFANY",
+    "セイコー", "SEIKO", "シチズン", "CITIZEN", "カシオ", "CASIO",
+    "G-SHOCK", "Gショック", "BABY-G", "PROTREK",
+    "OCEANUS", "オシアナス", "EDIFICE", "エディフィス",
+    "タグホイヤー", "TAG HEUER", "ブライトリング", "BREITLING",
+    "IWC", "ウブロ", "HUBLOT", "パネライ", "PANERAI",
+    "ブルガリ", "BVLGARI",
+    "パテックフィリップ", "Patek Philippe",
+    "オーデマピゲ", "Audemars Piguet",
+    "フランクミュラー", "FRANCK MULLER",
+    "Apple Watch", "アップルウォッチ",
+    "Garmin", "ガーミン", "Fitbit", "フィットビット",
+    // === ストリート ===
+    "シュプリーム", "SUPREME", "ステューシー", "STUSSY",
+    "アベイシングエイプ", "BAPE", "ア ベイシング エイプ",
+    "オフホワイト", "OFF-WHITE", "フィアオブゴッド", "FEAR OF GOD",
+    "Palace", "パレス", "Kith", "キス",
+    "Champion", "チャンピオン", "Carhartt", "カーハート",
+    "Dickies", "ディッキーズ",
+    // === 家電 ===
+    "シャープ", "SHARP", "三菱電機", "Mitsubishi", "ダイキン", "DAIKIN",
+    "象印", "ZOJIRUSHI", "タイガー", "TIGER",
+    "アイリスオーヤマ", "IRIS OHYAMA",
+    "Dyson", "ダイソン", "Roomba", "ルンバ", "iRobot",
+    "Tineco", "ティネコ", "Shark", "シャーク",
+    "ティファール", "T-fal", "DeLonghi", "デロンギ",
+    "KitchenAid", "キッチンエイド", "Vitamix", "バイタミックス",
+    "ネスプレッソ", "Nespresso", "ネスカフェ", "Nescafe",
+    "バルミューダ", "BALMUDA",
+    "ブラウン", "BRAUN", "Philips", "フィリップス",
+    "シロカ", "siroca", "山善", "YAMAZEN",
+    // === 美容・コスメ ===
+    "資生堂", "SHISEIDO", "コーセー", "KOSE",
+    "シュウウエムラ", "shu uemura", "イプサ", "IPSA",
+    "SK-II", "MAC", "ナーズ", "NARS", "ボビイブラウン", "BOBBI BROWN",
+    "ランコム", "LANCOME", "クリニーク", "CLINIQUE",
+    "エスティローダー", "Estee Lauder",
+    "DECORTÉ", "コスメデコルテ",
+    "ALBION", "アルビオン", "POLA", "ポーラ",
+    "クレドポー", "Cle de Peau",
+    "アディクション", "ADDICTION",
+    "セルヴォーク", "Celvoke",
+    "RMK", "アールエムケー",
+    "Three", "スリー", "SUQQU", "スック",
+    // === 楽器 ===
+    "Roland", "ローランド",
+    "Korg", "コルグ", "KAWAI", "カワイ",
+    "Fender", "フェンダー", "Gibson", "ギブソン",
+    "Ibanez", "アイバニーズ", "Martin", "マーチン",
+    "Taylor", "テイラー", "Paul Reed Smith",
+    "ESP", "Schecter", "シェクター",
+    "BOSS", "ボス", "Line 6", "ライン6",
+    // === ベビー・キッズ ===
+    "アップリカ", "Aprica", "コンビ", "Combi",
+    "Pigeon", "ピジョン", "BABYBJORN", "ベビービョルン",
+    "STOKKE", "ストッケ",
+    // === レディースアパレル（国内） ===
+    "アースミュージック&エコロジー", "earth music&ecology", "グローバルワーク", "GLOBAL WORK", "ニコアンド", "niko and",
+    "スナイデル", "snidel", "ジェラートピケ", "gelato pique", "マーキュリーデュオ", "MERCURYDUO",
+    "リエンダ", "rienda", "エモダ", "EMODA", "マウジー", "moussy",
+    "スライ", "SLY", "エイチアンドエム", "イエナ", "IENA", "スピックアンドスパン",
+    "Spick and Span", "トゥモローランド", "TOMORROWLAND", "フリークスストア", "FREAK'S STORE", "アズールバイマウジー",
+    "AZUL BY MOUSSY", "ハニーズ", "Honeys", "アンタイトル", "UNTITLED",
+    "インディヴィ", "INDIVI", "ナチュラルビューティーベーシック", "NATURAL BEAUTY BASIC", "プロポーションボディドレッシング", "PROPORTION BODY DRESSING",
+    "ミッシュマッシュ", "MISCH MASCH", "ジルスチュアート", "JILLSTUART", "ミナペルホネン", "mina perhonen",
+    "イッセイミヤケ", "ISSEY MIYAKE", "プリーツプリーズ", "PLEATS PLEASE", "コムデギャルソン", "COMME des GARCONS",
+    "ヨウジヤマモト", "Yohji Yamamoto", "サカイ", "sacai",
+    "マメクロゴウチ", "Mame Kurogouchi", "アニエスベー", "agnes b.",
+    // === バッグ・小物（追加） ===
+    "マスターピース", "master-piece", "Kitamura", "土屋鞄", "ツチヤカバン",
+    "イルビゾンテ", "IL BISONTE", "トリーバーチ", "TORY BURCH", "フルラ", "FURLA",
+    "ロンシャン", "LONGCHAMP", "レスポートサック", "LeSportsac", "キプリング", "Kipling",
+    "マリメッコ", "marimekko", "アフタヌーンティー", "Afternoon Tea", "ルートート", "ROOTOTE",
+    // === 靴（追加） ===
+    "リーガル", "REGAL", "ドクターマーチン", "Dr.Martens", "クラークス", "Clarks",
+    "ビルケンシュトック", "BIRKENSTOCK", "クロックス", "crocs", "ハッシュパピー", "Hush Puppies",
+    "ムーンスター", "MOONSTAR", "オリエンタルトラフィック", "ORiental TRaffic", "ダイアナ", "DIANA",
+    "卑弥呼", "HIMIKO", "オニツカタイガー", "Onitsuka Tiger", "ホカオネオネ",
+    // === キッチン・食器 ===
+    "ル・クルーゼ", "LE CREUSET", "ストウブ", "STAUB", "バーミキュラ", "VERMICULAR",
+    "ウェッジウッド", "WEDGWOOD", "ロイヤルコペンハーゲン", "Royal Copenhagen", "マイセン", "Meissen",
+    "ノリタケ", "Noritake", "ナルミ", "NARUMI", "ロイヤルアルバート", "Royal Albert",
+    "イッタラ", "iittala", "アラビア", "ARABIA", "野田琺瑯",
+    "月兎印", "ジョージジェンセン", "Georg Jensen", "ヘレンド", "HEREND", "リチャードジノリ",
+    "Richard Ginori", "たち吉", "ZWILLING",
+    "ツヴィリング", "ヘンケルス", "HENCKELS", "貝印", "サーモス",
+    "THERMOS", "スタンレー", "STANLEY", "ラバーメイド", "OXO", "ジョセフジョセフ",
+    "Joseph Joseph",
+    // === インテリア・雑貨 ===
+    "イケア", "IKEA", "ニトリ", "フランフラン", "Francfranc", "アクタス",
+    "ACTUS", "イデー", "IDEE", "カリモク", "karimoku", "マルニ木工",
+    "天童木工", "ルイスポールセン", "Louis Poulsen", "アルテック", "artek", "ハーマンミラー",
+    "Herman Miller", "カッシーナ", "Cassina", "ヴィトラ", "Vitra", "ダイソー",
+    "DAISO", "スリーコインズ", "3COINS", "ローラアシュレイ", "LAURA ASHLEY", "アフタヌーンティーリビング",
+    "ザラホーム", "ZARA HOME", "H&M HOME", "ジョーマローン", "Jo Malone", "ディプティック",
+    "diptyque", "ヤンキーキャンドル", "YANKEE CANDLE",
+    // === 手芸・クラフト・フラワー資材 ===
+    "松村工芸", "東京堂", "パレス化学", "大地農園", "マミーフラワーデザインスクール", "トーカイ",
+    "ハマナカ", "Hamanaka", "オリムパス", "Olympus製絲", "クロバー", "Clover",
+    "パジコ", "PADICO", "トーホー", "TOHO", "ミユキ", "MIYUKI",
+    "貴和製作所", "パーツクラブ", "Parts Club", "ユザワヤ", "Yuzawaya", "DMC",
+    "ルシアン", "LECIEN",
+    "ニッケ", "カワグチ", "KAWAGUCHI", "タカギ繊維",
+    "清原", "KIYOHARA", "オカダヤ",
+    "パーラービーズ", "Perler", "ナノブロック",
+    "nanoblock",
+    // === 文具・画材 ===
+    "パイロット", "PILOT", "ゼブラ", "ZEBRA", "三菱鉛筆",
+    "ぺんてる", "Pentel", "トンボ鉛筆", "Tombow", "サクラクレパス",
+    "コクヨ", "KOKUYO", "キングジム", "KING JIM", "ほぼ日", "モレスキン",
+    "MOLESKINE", "トラベラーズノート", "TRAVELER'S notebook", "ラミー",
+    "LAMY", "モンブラン", "MONTBLANC", "ペリカン", "Pelikan", "パーカー",
+    "PARKER", "セーラー", "SAILOR", "プラチナ万年筆", "PLATINUM", "ホルベイン",
+    "HOLBEIN", "ウィンザー&ニュートン", "Winsor&Newton", "コピック", "COPIC", "ステッドラー",
+    "STAEDTLER", "ファーバーカステル", "Faber-Castell",
+    // === 釣り ===
+    "ダイワ", "DAIWA", "がまかつ", "Gamakatsu", "メジャークラフト", "Major Craft",
+    "ジャッカル", "JACKALL", "メガバス", "Megabass",
+    "ヤマリア", "YAMARIA", "エバーグリーン", "EVERGREEN", "アブガルシア", "Abu Garcia",
+    "ラパラ", "Rapala", "サンライン", "SUNLINE", "バリバス", "VARIVAS",
+    "ハヤブサ", "Hayabusa", "第一精工",
+    // === ホビー・キャラクター（追加） ===
+    "グッドスマイルカンパニー", "GOOD SMILE COMPANY", "コトブキヤ", "KOTOBUKIYA", "メディコム・トイ", "MEDICOM TOY",
+    "海洋堂", "KAIYODO", "フリュー", "FuRyu", "タイトー", "TAITO",
+    "バンプレスト", "BANPRESTO", "メガハウス", "MegaHouse", "マックスファクトリー", "Max Factory",
+    "ジブリ", "スタジオジブリ", "レゴ", "LEGO",
+    "シルバニアファミリー", "トミカ", "プラレール", "リカちゃん", "メルちゃん", "アンパンマン",
+    "すみっコぐらし", "リラックマ",
+    // === ベビー・キッズ（追加） ===
+    "ミキハウス", "MIKI HOUSE", "ファミリア", "familiar", "エルゴベビー", "ERGOBABY",
+    "サイベックス", "cybex", "ボーネルンド", "BorneLund", "プチバトー", "PETIT BATEAU",
+    "ブランシェス", "BRANSHES", "エフオーキッズ", "F.O.KIDS", "西松屋", "ラグマート",
+    "Rag Mart", "ニシキベビー",
+    // === 美容・コスメ（追加） ===
+    "クレ・ド・ポー ボーテ", "エスケーツー", "ジルスチュアートビューティ", "ポール&ジョー", "PAUL & JOE", "COSME DECORTE",
+    "ルナソル", "LUNASOL", "キャンメイク", "CANMAKE", "セザンヌ", "CEZANNE",
+    "ヤーマン", "YA-MAN", "リファ", "ReFa", "パナソニックビューティ", "ReFa BEAUTECH",
+  ];
+
+  const TCG_TITLE_TO_BRAND = [
+    [/ポケモンカード|ポケカ|pokemon card/i, "ポケモン"],
+    [/遊戯王/, "遊戯王"],
+    [/デュエル・?マスターズ|デュエマ/, "デュエルマスターズ"],
+    [/ワンピースカード/, "ワンピース"],
+    [/ヴァイス.?シュヴァルツ/, "ヴァイスシュヴァルツ"]
+  ];
+
   function findYahooBrandInput() {
     return document.querySelector('input[placeholder*="ブランドを入力"]');
   }
@@ -1034,7 +1426,7 @@
   function brandQueries(brand) {
     // ★英語表記を優先: 言い換えの英語名 → メルカリのブランド名 → そのほか
     const aliases = BRAND_ALIASES[brand] || [];
-    const qs = [...aliases.filter(isLatinName), brand, ...aliases.filter((a) => !isLatinName(a))];
+    const qs = [...aliases.filter(isLatinName), ...splitBrandVariants(brand), ...aliases.filter((a) => !isLatinName(a))];
     const stripped = brand.replace(BRAND_SUFFIX_RE, "").trim();
     if (stripped && stripped !== brand) qs.push(stripped);
     const firstWord = brand.split(/[\s　・]/)[0];
@@ -1104,7 +1496,14 @@
   }
 
   async function fillBrandYahoo(data) {
-    const brand = sanitizeBrand(data.brand);
+    // ★v1.5.6: メルカリにブランドが無いときは、商品名の中のブランド名（辞書）から推定する
+    let brand = sanitizeBrand(data.brand);
+    let inferred = false;
+    if (!brand) {
+      brand = inferBrandFromTitle(data.title || "", BRAND_KEYWORDS, TCG_TITLE_TO_BRAND);
+      inferred = !!brand;
+      if (inferred) console.log("[PayPay] 商品名から推定したブランド:", brand);
+    }
     if (!brand) return { key: "brand", ok: false, skipped: true, reason: "メルカリにブランドなし" };
 
     const input0 = await waitForElement(() => findYahooBrandInput(), 3000, 150);
@@ -1112,21 +1511,23 @@
     input0.scrollIntoView({ block: "center" });
 
     const nb = normBrand(brand);
-    const exactNames = [brand, ...(BRAND_ALIASES[brand] || [])].map(normBrand);
+    const exactNames = [...splitBrandVariants(brand), ...(BRAND_ALIASES[brand] || [])].map(normBrand);
     const linesOf = (li) => brandOptionNames(li).map((x) => normBrand(x.replace(/[（(].*?[)）]/g, ""))).filter(Boolean);
     const pickIndex = (options) => {
-      // 完全一致する候補が複数あるときは、英語表記の候補を優先（例: 「SEIKO」と「セイコー」が別々にある場合）
-      const exact = options.map((li, i) => ({ li, i })).filter((x) => linesOf(x.li).some((l) => exactNames.includes(l)));
-      if (exact.length) {
-        const latin = exact.find((x) => isLatinName(brandOptionNames(x.li)[0]));
-        return (latin || exact[0]).i;
+      // ★v1.5.6: 表記ゆれ（ひらがな/カタカナ・ヴ/ブ・長音・記号）を吸収して点数で選ぶ
+      //   同じ点数なら英語表記の候補を優先（例: 「SEIKO」と「セイコー」が別々にある場合）
+      const scored = options
+        .map((li, i) => ({ i, li, sc: brandMatchScore(brandOptionNames(li), [...exactNames, nb]) }))
+        .filter((x) => x.sc > 0)
+        .sort((x, y) => (y.sc - x.sc) || ((isLatinName(brandOptionNames(y.li)[0]) ? 1 : 0) - (isLatinName(brandOptionNames(x.li)[0]) ? 1 : 0)));
+      if (scored.length) return scored[0].i;
+      // 候補が1件だけで、名前の一部が重なるならそれを選ぶ（マイナーなブランドの表記違い対策）
+      if (options.length === 1) {
+        const c = brandOptionNames(options[0]).map(looseBrandKey);
+        const b = looseBrandKey(brand);
+        if (b.length >= 2 && c.some((x) => x.length >= 2 && (x.includes(b) || b.includes(x)))) return 0;
       }
-      let idx = -1;
-      const pref = options
-        .map((li, i) => ({ i, len: Math.max(0, ...linesOf(li).filter((x) => x.length >= 3 && nb.startsWith(x)).map((x) => x.length)) }))
-        .filter((x) => x.len > 0)
-        .sort((x, y) => y.len - x.len);
-      return pref.length ? pref[0].i : -1;
+      return -1;
     };
 
     for (const q of brandQueries(brand)) {
